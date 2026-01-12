@@ -8,15 +8,23 @@ import { SolutionDisplay } from '../components/fdc/SolutionDisplay';
 import { CorrectionPanel } from '../components/fdc/CorrectionPanel';
 import { MissionLog } from '../components/fdc/MissionLog';
 
+
 export interface LogTiro {
   id: number;
   hora: string;
   tipo: 'SALVA' | 'REGLAJE';
   detalle: string;
   coords: string;
+  snapshot: {
+    tx: number; ty: number;
+    ox: number; oy: number;
+    usarVariacion: boolean;
+  };
+  fullData?: {
+    inputs: any;
+    results: any;
+  };
 }
-
-// --- CONSTANTES INICIALES ---
 const INITIAL_INPUTS = {
   mx: 0, my: 0, alt_pieza: 0,
   tx: 0, ty: 0, alt_obj: 0,
@@ -48,8 +56,8 @@ const INITIAL_REGLAJE = {
 };
 
 export function Calculadora() {
-  
-  // --- 1. ESTADOS CON CARGA INMEDIATA (LAZY INITIALIZATION) ---
+
+
   const [faseMision, setFaseMision] = useState<'PREPARACION' | 'FUEGO'>(() => {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
@@ -79,20 +87,17 @@ export function Calculadora() {
     return savedLogs ? JSON.parse(savedLogs).length + 1 : 1;
   });
 
-  // --- 2. PERSISTENCIA AUTOMÁTICA ---
   useEffect(() => { localStorage.setItem('mision_inputs', JSON.stringify(inputs)); }, [inputs]);
   useEffect(() => { localStorage.setItem('mision_res', JSON.stringify(res)); }, [res]);
   useEffect(() => { localStorage.setItem('mision_reglaje', JSON.stringify(reglaje)); }, [reglaje]);
   useEffect(() => { localStorage.setItem('mision_logs', JSON.stringify(historial)); }, [historial]);
   useEffect(() => { localStorage.setItem('mision_estado', faseMision); }, [faseMision]);
 
-  // --- 3. FUNCIONES DE INTERFAZ ---
-
   const handleNuevaMision = () => {
     if (historial.length > 0) {
       if (!window.confirm("⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo y se reiniciará.")) return;
     }
-    localStorage.clear(); 
+    localStorage.clear();
     setHistorial([]);
     setContador(1);
     setFaseMision('PREPARACION');
@@ -101,13 +106,31 @@ export function Calculadora() {
     setReglaje(INITIAL_REGLAJE);
   };
 
+  const restaurarEstado = (log: LogTiro) => {
+    if (!log.snapshot) return;
+    if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?\n\nEl blanco volverá a:\nEste: ${log.snapshot.tx}\nNorte: ${log.snapshot.ty}`)) return;
+
+    setInputs((prev: any) => ({
+      ...prev,
+      tx: log.snapshot.tx,
+      ty: log.snapshot.ty,
+      ox: log.snapshot.ox,
+      oy: log.snapshot.oy,
+      usarVariacion: false
+    }));
+  };
+
+  const eliminarLog = (id: number) => {
+    if (!window.confirm("¿Borrar este registro del historial?")) return;
+    setHistorial((prev: any) => prev.filter((l: LogTiro) => l.id !== id));
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value, type } = e.target;
     let val: any = value;
     if (type === 'number') val = parseFloat(value) || 0;
     if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
 
-    // TypeScript Fix: Agregamos (prev: any) para evitar el error de 'implicit any'
     if (id === 'check_bloqueo') setInputs((prev: any) => ({ ...prev, bloqueoMeteo: val }));
     else if (id === 'check_variacion') setInputs((prev: any) => ({ ...prev, usarVariacion: val }));
     else setInputs((prev: any) => ({ ...prev, [id]: val }));
@@ -117,34 +140,31 @@ export function Calculadora() {
     const { id, value, type } = e.target;
     let val: any = value;
     if (type === 'number') val = parseFloat(value) || 0;
-    // TypeScript Fix: Agregamos (prev: any)
     setReglaje((prev: any) => ({ ...prev, [id]: val }));
   }
 
-  // --- CÁLCULOS AUTOMÁTICOS ---
   useEffect(() => {
     if (inputs.distObs > 0 && inputs.ox > 0 && inputs.oy > 0) {
       let rad = (inputs.azObsUnit === 'mils') ? inputs.azObs * (Math.PI * 2 / 6400) : inputs.azObs * (Math.PI / 180);
-      setInputs((prev: any) => ({ 
-        ...prev, 
-        tx: Math.round(inputs.ox + inputs.distObs * Math.sin(rad)), 
-        ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad)) 
+      setInputs((prev: any) => ({
+        ...prev,
+        tx: Math.round(inputs.ox + inputs.distObs * Math.sin(rad)),
+        ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad))
       }));
     }
   }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy]);
 
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
-
     const variacionEfectiva = inputs.usarVariacion ? calcularVariacionMagnetica(inputs.fecha_tiro) : 0;
+
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
     if (!geo) return;
 
     const dataMeteo: DatosMeteo = {
       vel: inputs.meteo_vel, dir: inputs.meteo_dir, temp: inputs.meteo_temp,
       presion: inputs.meteo_pres, difPeso: inputs.dif_peso, difVel: inputs.dif_vel,
-      temp_carga: inputs.temp_carga,
-      bloqueo: inputs.bloqueoMeteo
+      temp_carga: inputs.temp_carga, bloqueo: inputs.bloqueoMeteo
     };
 
     const granada = ARSENAL[inputs.tipoGranada];
@@ -176,6 +196,7 @@ export function Calculadora() {
 
     const solucion = calcularBalistica(geo.dist, inputs.tipoGranada, cargaFinal, dataMeteo, geo.azMils);
     const azimutMag = geo.azMils - (variacionEfectiva * 17.778) + solucion.corrDeriva;
+
     let derivaCmd = (inputs.orientacion_base - azimutMag + 6400) % 6400;
 
     setRes({
@@ -185,33 +206,40 @@ export function Calculadora() {
       cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
       cmd_time: solucion.tiempo,
       cmd_dist: Math.round(geo.dist).toString(),
-      carga_rec: cargaRecomendada, 
-      cargas_posibles: cargasPosibles, 
+      carga_rec: cargaRecomendada, cargas_posibles: cargasPosibles,
       rango_min: rMin, rango_max: rMax
     });
   }, [inputs]);
-
   const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string) => {
     const nuevoLog: LogTiro = {
       id: contador,
       hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      tipo, detalle, coords
+      tipo, detalle, coords,
+
+      // Foto para restaurar
+      snapshot: {
+        tx: inputs.tx, ty: inputs.ty,
+        ox: inputs.ox, oy: inputs.oy,
+        usarVariacion: inputs.usarVariacion
+      },
+      fullData: {
+        inputs: { ...inputs },
+        results: { ...res }
+      }
     };
-    // TypeScript Fix: Agregamos (prev: any)
     setHistorial((prev: any) => [nuevoLog, ...prev]);
-    // TypeScript Fix: Agregamos (c: number)
     setContador((c: number) => c + 1);
   };
-
   const registrarSalva = () => {
-    if (faseMision === 'FUEGO') return; 
-
-    setFaseMision('FUEGO'); 
+    setFaseMision('FUEGO');
     guardarLog(
-      'SALVA', 
-      `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev}`, 
+      'SALVA',
+      `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev}`,
       `T: ${inputs.tx} / ${inputs.ty}`
     );
+    if (inputs.usarVariacion) {
+      setInputs((prev: any) => ({ ...prev, usarVariacion: false }));
+    }
   };
 
   const aplicarCorreccion = () => {
@@ -238,7 +266,6 @@ export function Calculadora() {
       detalleLog = `MED: Impacto en Az ${reglaje.imp_az}, Dist ${reglaje.imp_dist}`;
     }
 
-    // TypeScript Fix: Agregamos (prev: any)
     setInputs((prev: any) => ({ ...prev, tx: nuevoTx, ty: nuevoTy }));
     guardarLog('REGLAJE', detalleLog, `T: ${nuevoTx} / ${nuevoTy}`);
     setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
@@ -253,21 +280,28 @@ export function Calculadora() {
             <h1>MORTEROS-MARIA // CALCULADORA {faseMision === 'FUEGO' && <span className="text-blink">[EN MISIÓN]</span>}</h1>
           </div>
           <div className="header-right">
-            <button 
-               onClick={handleNuevaMision}
-               className="btn-reset-mision"
-               style={{ backgroundColor: '#330000', color: '#ff4444', border: '1px solid #ff4444', padding: '4px 10px', fontSize: '0.7rem', marginRight: '15px', cursor: 'pointer', fontFamily: 'monospace' }}
+            <button
+              onClick={handleNuevaMision}
+              className="btn-reset-mision"
+              style={{ backgroundColor: '#330000', color: '#ff4444', border: '1px solid #ff4444', padding: '4px 10px', fontSize: '0.7rem', marginRight: '15px', cursor: 'pointer', fontFamily: 'monospace' }}
             >
-               [ X ] FIN MISIÓN
+              [ X ] FIN MISIÓN
             </button>
             <div className="mini-control">
               <label>MUNICIÓN</label>
-              <select id="tipoGranada" value={inputs.tipoGranada} onChange={handleChange}>
-                <option value="W87">W87 (China 81mm)</option>
-                <option value="M43">M43 (USA 81mm)</option>
+              <select
+                id="tipoGranada"
+                value={inputs.tipoGranada}
+                onChange={handleChange}
+                style={{ maxWidth: '180px' }} 
+              >
+                {Object.entries(ARSENAL).map(([id, datos]) => (
+                  <option key={id} value={id}>
+                    {datos.descripcion.length > 20 ? datos.descripcion : `${id} - ${datos.descripcion}`}
+                  </option>
+                ))}
               </select>
             </div>
-            <div className="battery-indicator">BAT 100%</div>
           </div>
         </header>
 
@@ -280,27 +314,30 @@ export function Calculadora() {
               historial={historial}
             />
             <InputConsole
-              data={inputs} 
-              variacion={res.variacion} 
+              data={inputs}
+              variacion={res.variacion}
               onChange={handleChange}
-              faseBloqueada={faseMision === 'FUEGO'} 
+              faseBloqueada={faseMision === 'FUEGO'}
             />
           </div>
 
           <div className="right-sidebar">
             <SolutionDisplay
-              res={res} 
-              inputs={inputs} 
-              onChange={handleChange} 
+              res={res}
+              inputs={inputs}
+              onChange={handleChange}
               onFire={registrarSalva}
-              missionActive={faseMision === 'FUEGO'} 
+              missionActive={false}
             />
-            
+            <MissionLog
+              logs={historial}
+              onRestore={restaurarEstado}
+              onDelete={eliminarLog}
+            />
             <CorrectionPanel
               reglaje={reglaje} onChange={handleReglaje} onApply={aplicarCorreccion}
             />
-            
-            <MissionLog logs={historial} />
+
           </div>
         </div>
       </div>

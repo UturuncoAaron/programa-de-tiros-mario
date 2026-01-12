@@ -1,22 +1,17 @@
 interface CorrectionPanelProps {
     reglaje: any;
-    onChange: (e: any) => void; // Usamos 'any' en el evento para facilitar los botones custom
+    onChange: (e: any) => void;
     onApply: () => void;
 }
 
 export function CorrectionPanel({ reglaje, onChange, onApply }: CorrectionPanelProps) {
-
-    // Helper para cambiar el método con los botones (tabs)
     const setMetodo = (metodo: string) => {
-        // Simulamos un evento para reutilizar tu lógica existente
         onChange({ target: { id: 'metodo', value: metodo, type: 'text' } });
     };
 
     return (
         <div className="sidebar-section" style={{ borderTop: '2px solid #330000' }}>
             <label className="section-label" style={{ color: '#ff4444', borderColor: '#330000' }}>REGLAJE DE TIRO</label>
-
-            {/* PESTAÑAS TIPO TÁCTICO */}
             <div className="tab-container">
                 <button
                     className={`tab-btn ${reglaje.metodo === 'medicion' ? 'active' : ''}`}
@@ -35,7 +30,6 @@ export function CorrectionPanel({ reglaje, onChange, onApply }: CorrectionPanelP
             <div className="corr-body">
                 {reglaje.metodo === 'apreciacion' ? (
                     <>
-                        {/* VISTA APRECIACIÓN */}
                         <div className="corr-row" style={{ display: 'flex', gap: '5px' }}>
                             <div className="corr-field" style={{ flex: 1 }}>
                                 <label>DIRECCIÓN</label>
