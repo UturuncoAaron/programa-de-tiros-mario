@@ -833,3 +833,48 @@ input:checked + .slider:before { transform: translateX(14px); background-color: 
   transition: width 0.5s ease, background 0.5s ease;
   box-shadow: 0 0 5px currentColor;
 }
+/* En tu App.css o index.css */
+.tactical-icon {
+  background: transparent;
+  border: none;
+}
+.icon-svg {
+  filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.8)); /* Sombra para contraste */
+}
+.pulse-target {
+  animation: pulse-red 2s infinite;
+}
+@keyframes pulse-red {
+  0% { filter: drop-shadow(0 0 0 rgba(255, 0, 0, 0.7)); }
+  70% { filter: drop-shadow(0 0 10px rgba(255, 0, 0, 0)); }
+  100% { filter: drop-shadow(0 0 0 rgba(255, 0, 0, 0)); }
+}
+/* Animación para el objetivo */
+.pulse-target path, .pulse-target line {
+  vector-effect: non-scaling-stroke;
+}
+.pulse-target {
+  animation: radar-pulse 2s infinite;
+}
+
+@keyframes radar-pulse {
+  0% { filter: drop-shadow(0 0 2px rgba(255, 0, 0, 0.8)); opacity: 1; }
+  50% { filter: drop-shadow(0 0 8px rgba(255, 0, 0, 1)); opacity: 0.8; }
+  100% { filter: drop-shadow(0 0 2px rgba(255, 0, 0, 0.8)); opacity: 1; }
+}
+
+.az-tooltip {
+  background: rgba(0,0,0,0.7);
+  border: 1px solid #ffcc00;
+  color: #ffcc00;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+/* Quitar fondo blanco de los tooltips de Leaflet por defecto */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: rgba(10, 20, 25, 0.95) !important;
+  border: 1px solid #00ffcc !important;
+  color: #fff !important;
+  border-radius: 2px !important;
+}

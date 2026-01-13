@@ -25,6 +25,7 @@ export interface LogTiro {
   };
 }
 
+// FIX 2: Añadimos _manualOverride para saber si ya corregimos manualmente
 const INITIAL_INPUTS = {
   mx: 0, my: 0, alt_pieza: 0,
   tx: 0, ty: 0, alt_obj: 0,
@@ -38,7 +39,8 @@ const INITIAL_INPUTS = {
   bloqueoMeteo: true,
   usarVariacion: true,
   orientacion_base: 6400,
-  carga_seleccionada: '-'
+  carga_seleccionada: '-',
+  _manualOverride: false // Bandera interna para evitar sobreescritura al recargar
 };
 
 const INITIAL_RES = {
@@ -61,6 +63,12 @@ export function Calculadora() {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
 
+  // FIX 1: Estado para persistir la variación magnética CONGELADA durante la misión
+  const [variacionMision, setVariacionMision] = useState<number | null>(() => {
+    const saved = localStorage.getItem('mision_var_fija');
+    return saved ? parseFloat(saved) : null;
+  });
+
   const [isFiring, setIsFiring] = useState(false);
 
   const [inputs, setInputs] = useState(() => {
@@ -69,6 +77,7 @@ export function Calculadora() {
 
     let finalInputs = savedInputs ? { ...INITIAL_INPUTS, ...JSON.parse(savedInputs) } : INITIAL_INPUTS;
 
+    // Asegurarse de que el switch visual coincida con la fase al recargar
     if (savedPhase === 'FUEGO') {
       finalInputs.usarVariacion = false;
     }
@@ -96,11 +105,18 @@ export function Calculadora() {
     return savedLogs ? JSON.parse(savedLogs).length + 1 : 1;
   });
 
+  // Efectos de Persistencia
   useEffect(() => { localStorage.setItem('mision_inputs', JSON.stringify(inputs)); }, [inputs]);
   useEffect(() => { localStorage.setItem('mision_res', JSON.stringify(res)); }, [res]);
   useEffect(() => { localStorage.setItem('mision_reglaje', JSON.stringify(reglaje)); }, [reglaje]);
   useEffect(() => { localStorage.setItem('mision_logs', JSON.stringify(historial)); }, [historial]);
   useEffect(() => { localStorage.setItem('mision_estado', faseMision); }, [faseMision]);
+
+  // FIX 1: Persistir la variación congelada
+  useEffect(() => {
+    if (variacionMision !== null) localStorage.setItem('mision_var_fija', variacionMision.toString());
+    else localStorage.removeItem('mision_var_fija');
+  }, [variacionMision]);
 
   const handleNuevaMision = () => {
     if (historial.length > 0) {
@@ -110,6 +126,7 @@ export function Calculadora() {
     setHistorial([]);
     setContador(1);
     setFaseMision('PREPARACION');
+    setVariacionMision(null); // Resetear variación congelada
     setInputs(INITIAL_INPUTS);
     setRes(INITIAL_RES);
     setReglaje(INITIAL_REGLAJE);
@@ -125,7 +142,8 @@ export function Calculadora() {
       ty: log.snapshot.ty,
       ox: log.snapshot.ox,
       oy: log.snapshot.oy,
-      usarVariacion: log.snapshot.usarVariacion
+      usarVariacion: log.snapshot.usarVariacion,
+      _manualOverride: true // Al restaurar, asumimos que queremos esos datos exactos
     }));
   };
 
@@ -142,7 +160,19 @@ export function Calculadora() {
 
     if (id === 'check_bloqueo') setInputs((prev: any) => ({ ...prev, bloqueoMeteo: val }));
     else if (id === 'check_variacion') setInputs((prev: any) => ({ ...prev, usarVariacion: val }));
-    else setInputs((prev: any) => ({ ...prev, [id]: val }));
+    else {
+      // Si el usuario edita manualmente las coordenadas del OBJETIVO, activamos el override
+      if (id === 'tx' || id === 'ty') {
+        setInputs((prev: any) => ({ ...prev, [id]: val, _manualOverride: true }));
+      }
+      // Si el usuario edita datos del OBSERVADOR, desactivamos el override para permitir recalculo
+      else if (['distObs', 'azObs', 'ox', 'oy'].includes(id)) {
+        setInputs((prev: any) => ({ ...prev, [id]: val, _manualOverride: false }));
+      }
+      else {
+        setInputs((prev: any) => ({ ...prev, [id]: val }));
+      }
+    }
   };
 
   const handleReglaje = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -152,7 +182,11 @@ export function Calculadora() {
     setReglaje((prev: any) => ({ ...prev, [id]: val }));
   }
 
+  // FIX 2: Cálculo Polar (Observador -> Blanco)
+  // Ahora respetamos la bandera _manualOverride. Si es true, NO recalculamos.
   useEffect(() => {
+    if (inputs._manualOverride) return; // Si ya hay correcciones manuales, no tocar.
+
     if (inputs.distObs > 0 && inputs.ox > 0 && inputs.oy > 0) {
       let rad = (inputs.azObsUnit === 'mils') ? inputs.azObs * (Math.PI * 2 / 6400) : inputs.azObs * (Math.PI / 180);
       setInputs((prev: any) => ({
@@ -161,12 +195,22 @@ export function Calculadora() {
         ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad))
       }));
     }
-  }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy]);
+  }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, inputs._manualOverride]); // Añadida dependencia _manualOverride
 
+  // CÁLCULO PRINCIPAL DE BALÍSTICA
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
 
-    const variacionEfectiva = inputs.usarVariacion ? calcularVariacionMagnetica(inputs.fecha_tiro) : 0;
+    // FIX 1: Lógica de Variación Magnética Congelada
+    let variacionEfectiva = 0;
+
+    // Si estamos en FUEGO y tenemos una variación guardada, usamos esa (congelada)
+    if (faseMision === 'FUEGO' && variacionMision !== null) {
+      variacionEfectiva = variacionMision;
+    } else {
+      // Si estamos en PREPARACION, obedecemos al switch dinámicamente
+      variacionEfectiva = inputs.usarVariacion ? calcularVariacionMagnetica(inputs.fecha_tiro) : 0;
+    }
 
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
     if (!geo) return;
@@ -211,7 +255,10 @@ export function Calculadora() {
     let derivaCmd = (inputs.orientacion_base - azimutMag + 6400) % 6400;
 
     setRes({
-      azimutMils: geo.azMils, azimutMag, distancia: geo.dist, variacion: variacionEfectiva,
+      azimutMils: geo.azMils,
+      azimutMag,
+      distancia: geo.dist,
+      variacion: variacionEfectiva, // Pasamos la efectiva para mostrarla (o no) en la UI
       cmd_orient: inputs.orientacion_base.toString(),
       cmd_deriva: Math.round(derivaCmd).toString().padStart(4, '0'),
       cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
@@ -220,7 +267,7 @@ export function Calculadora() {
       carga_rec: cargaRecomendada, cargas_posibles: cargasPosibles,
       rango_min: rMin, rango_max: rMax
     });
-  }, [inputs]);
+  }, [inputs, faseMision, variacionMision]); // Añadimos faseMision y variacionMision a dependencias
 
   const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string) => {
     const nuevoLog: LogTiro = {
@@ -247,12 +294,20 @@ export function Calculadora() {
     setIsFiring(true);
     setFaseMision('FUEGO');
 
+    // FIX 1: Congelar la variación magnética al momento del primer disparo
+    if (inputs.usarVariacion) {
+      const varActual = calcularVariacionMagnetica(inputs.fecha_tiro);
+      setVariacionMision(varActual); // Guardamos la variación actual en el estado persistente
+
+      // Apagamos el switch visualmente, pero la lógica ahora usará 'variacionMision'
+      setInputs((prev: any) => ({ ...prev, usarVariacion: false }));
+    } else if (variacionMision === null) {
+      // Si dispararon sin variación, guardamos 0 explícitamente para mantener coherencia
+      setVariacionMision(0);
+    }
+
     const detalleTiro = `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev}`;
     guardarLog('SALVA', detalleTiro, `T: ${inputs.tx} / ${inputs.ty}`);
-
-    if (inputs.usarVariacion) {
-      setInputs((prev: any) => ({ ...prev, usarVariacion: false }));
-    }
 
     setTimeout(() => {
       setIsFiring(false);
@@ -289,9 +344,10 @@ export function Calculadora() {
       detalleLog = `MED: Impacto en Az ${reglaje.imp_az}, Dist ${reglaje.imp_dist}`;
     }
 
-    setInputs((prev: any) => ({ ...prev, tx: nuevoTx, ty: nuevoTy }));
-    guardarLog('REGLAJE', detalleLog, `T: ${nuevoTx} / ${nuevoTy}`);
+    // FIX 2: Al aplicar corrección, activamos _manualOverride para proteger estos datos al recargar
+    setInputs((prev: any) => ({ ...prev, tx: nuevoTx, ty: nuevoTy, _manualOverride: true }));
 
+    guardarLog('REGLAJE', detalleLog, `T: ${nuevoTx} / ${nuevoTy}`);
     setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
   };
 
@@ -336,6 +392,7 @@ export function Calculadora() {
               tx={inputs.tx} ty={inputs.ty}
               ox={inputs.ox} oy={inputs.oy}
               historial={historial}
+              orientacion_base={inputs.orientacion_base}
             />
             <InputConsole
               data={inputs}
@@ -352,6 +409,7 @@ export function Calculadora() {
               onChange={handleChange}
               onFire={handleEjecutarTiro}
               missionActive={isFiring}
+              faseMision={faseMision}
             />
             <MissionLog
               logs={historial}
