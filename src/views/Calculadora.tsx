@@ -8,7 +8,6 @@ import { SolutionDisplay } from '../components/fdc/SolutionDisplay';
 import { CorrectionPanel } from '../components/fdc/CorrectionPanel';
 import { MissionLog } from '../components/fdc/MissionLog';
 
-
 export interface LogTiro {
   id: number;
   hora: string;
@@ -25,6 +24,7 @@ export interface LogTiro {
     results: any;
   };
 }
+
 const INITIAL_INPUTS = {
   mx: 0, my: 0, alt_pieza: 0,
   tx: 0, ty: 0, alt_obj: 0,
@@ -57,14 +57,23 @@ const INITIAL_REGLAJE = {
 
 export function Calculadora() {
 
-
   const [faseMision, setFaseMision] = useState<'PREPARACION' | 'FUEGO'>(() => {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
 
+  const [isFiring, setIsFiring] = useState(false);
+
   const [inputs, setInputs] = useState(() => {
-    const saved = localStorage.getItem('mision_inputs');
-    return saved ? JSON.parse(saved) : INITIAL_INPUTS;
+    const savedInputs = localStorage.getItem('mision_inputs');
+    const savedPhase = localStorage.getItem('mision_estado');
+
+    let finalInputs = savedInputs ? { ...INITIAL_INPUTS, ...JSON.parse(savedInputs) } : INITIAL_INPUTS;
+
+    if (savedPhase === 'FUEGO') {
+      finalInputs.usarVariacion = false;
+    }
+
+    return finalInputs;
   });
 
   const [reglaje, setReglaje] = useState(() => {
@@ -95,7 +104,7 @@ export function Calculadora() {
 
   const handleNuevaMision = () => {
     if (historial.length > 0) {
-      if (!window.confirm("⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo y se reiniciará.")) return;
+      if (!window.confirm("⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo el historial y configuraciones.")) return;
     }
     localStorage.clear();
     setHistorial([]);
@@ -108,7 +117,7 @@ export function Calculadora() {
 
   const restaurarEstado = (log: LogTiro) => {
     if (!log.snapshot) return;
-    if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?\n\nEl blanco volverá a:\nEste: ${log.snapshot.tx}\nNorte: ${log.snapshot.ty}`)) return;
+    if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?\n\nEl blanco volverá a las coordenadas guardadas.`)) return;
 
     setInputs((prev: any) => ({
       ...prev,
@@ -116,7 +125,7 @@ export function Calculadora() {
       ty: log.snapshot.ty,
       ox: log.snapshot.ox,
       oy: log.snapshot.oy,
-      usarVariacion: false
+      usarVariacion: log.snapshot.usarVariacion
     }));
   };
 
@@ -156,6 +165,7 @@ export function Calculadora() {
 
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
+
     const variacionEfectiva = inputs.usarVariacion ? calcularVariacionMagnetica(inputs.fecha_tiro) : 0;
 
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
@@ -195,6 +205,7 @@ export function Calculadora() {
     }
 
     const solucion = calcularBalistica(geo.dist, inputs.tipoGranada, cargaFinal, dataMeteo, geo.azMils);
+
     const azimutMag = geo.azMils - (variacionEfectiva * 17.778) + solucion.corrDeriva;
 
     let derivaCmd = (inputs.orientacion_base - azimutMag + 6400) % 6400;
@@ -210,13 +221,12 @@ export function Calculadora() {
       rango_min: rMin, rango_max: rMax
     });
   }, [inputs]);
+
   const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string) => {
     const nuevoLog: LogTiro = {
       id: contador,
       hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       tipo, detalle, coords,
-
-      // Foto para restaurar
       snapshot: {
         tx: inputs.tx, ty: inputs.ty,
         ox: inputs.ox, oy: inputs.oy,
@@ -230,16 +240,23 @@ export function Calculadora() {
     setHistorial((prev: any) => [nuevoLog, ...prev]);
     setContador((c: number) => c + 1);
   };
-  const registrarSalva = () => {
+
+  const handleEjecutarTiro = () => {
+    if (isFiring) return;
+
+    setIsFiring(true);
     setFaseMision('FUEGO');
-    guardarLog(
-      'SALVA',
-      `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev}`,
-      `T: ${inputs.tx} / ${inputs.ty}`
-    );
+
+    const detalleTiro = `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev}`;
+    guardarLog('SALVA', detalleTiro, `T: ${inputs.tx} / ${inputs.ty}`);
+
     if (inputs.usarVariacion) {
       setInputs((prev: any) => ({ ...prev, usarVariacion: false }));
     }
+
+    setTimeout(() => {
+      setIsFiring(false);
+    }, 1500);
   };
 
   const aplicarCorreccion = () => {
@@ -257,17 +274,24 @@ export function Calculadora() {
 
       nuevoTx = Math.round(inputs.tx - ((offsetX * Math.cos(azOT)) + (offsetY * Math.sin(azOT))));
       nuevoTy = Math.round(inputs.ty + ((offsetY * Math.cos(azOT)) - (offsetX * Math.sin(azOT))));
+
       detalleLog = `APR: ${reglaje.dir === 'right' ? 'Der' : 'Izq'} ${reglaje.val_dir}, ${reglaje.rango === 'add' ? '+' : '-'}${reglaje.val_rango}`;
     } else {
       if (reglaje.imp_dist === 0) return;
       let radImp = (reglaje.imp_unit === 'mils') ? reglaje.imp_az * (Math.PI * 2 / 6400) : reglaje.imp_az * (Math.PI / 180);
-      nuevoTx = Math.round(inputs.tx - (inputs.ox + reglaje.imp_dist * Math.sin(radImp) - inputs.tx));
-      nuevoTy = Math.round(inputs.ty - (inputs.oy + reglaje.imp_dist * Math.cos(radImp) - inputs.ty));
+
+      const impactoX = inputs.ox + reglaje.imp_dist * Math.sin(radImp);
+      const impactoY = inputs.oy + reglaje.imp_dist * Math.cos(radImp);
+
+      nuevoTx = Math.round(inputs.tx - (impactoX - inputs.tx));
+      nuevoTy = Math.round(inputs.ty - (impactoY - inputs.ty));
+
       detalleLog = `MED: Impacto en Az ${reglaje.imp_az}, Dist ${reglaje.imp_dist}`;
     }
 
     setInputs((prev: any) => ({ ...prev, tx: nuevoTx, ty: nuevoTy }));
     guardarLog('REGLAJE', detalleLog, `T: ${nuevoTx} / ${nuevoTy}`);
+
     setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
   };
 
@@ -293,7 +317,7 @@ export function Calculadora() {
                 id="tipoGranada"
                 value={inputs.tipoGranada}
                 onChange={handleChange}
-                style={{ maxWidth: '180px' }} 
+                style={{ maxWidth: '180px' }}
               >
                 {Object.entries(ARSENAL).map(([id, datos]) => (
                   <option key={id} value={id}>
@@ -326,8 +350,8 @@ export function Calculadora() {
               res={res}
               inputs={inputs}
               onChange={handleChange}
-              onFire={registrarSalva}
-              missionActive={false}
+              onFire={handleEjecutarTiro}
+              missionActive={isFiring}
             />
             <MissionLog
               logs={historial}
@@ -337,7 +361,6 @@ export function Calculadora() {
             <CorrectionPanel
               reglaje={reglaje} onChange={handleReglaje} onApply={aplicarCorreccion}
             />
-
           </div>
         </div>
       </div>
