@@ -25,7 +25,6 @@ export interface LogTiro {
   };
 }
 
-// FIX 2: Añadimos _manualOverride para saber si ya corregimos manualmente
 const INITIAL_INPUTS = {
   mx: 0, my: 0, alt_pieza: 0,
   tx: 0, ty: 0, alt_obj: 0,
@@ -40,7 +39,6 @@ const INITIAL_INPUTS = {
   usarVariacion: true,
   orientacion_base: 6400,
   carga_seleccionada: '-',
-  _manualOverride: false // Bandera interna para evitar sobreescritura al recargar
 };
 
 const INITIAL_RES = {
@@ -59,30 +57,33 @@ const INITIAL_REGLAJE = {
 
 export function Calculadora() {
 
+  // --- ESTADOS ---
   const [faseMision, setFaseMision] = useState<'PREPARACION' | 'FUEGO'>(() => {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
 
-  // FIX 1: Estado para persistir la variación magnética CONGELADA durante la misión
-  const [variacionMision, setVariacionMision] = useState<number | null>(() => {
-    const saved = localStorage.getItem('mision_var_fija');
-    return saved ? parseFloat(saved) : null;
+  // DATOS CONGELADOS: Guardamos también el AZIMUT GRID ORIGINAL para comparar con el estallido
+  const [datosCongelados, setDatosCongelados] = useState<{
+    derivaBase: number,
+    distBase: number,
+    variacionUsada: number,
+    azimutBaseMag: number,
+    azimutBaseGrid: number // Nuevo: Necesario para comparar estallido vs objetivo real
+  } | null>(() => {
+    const saved = localStorage.getItem('mision_base');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [correccionAcumulada, setCorreccionAcumulada] = useState<{ az: number, dist: number }>(() => {
+    const saved = localStorage.getItem('mision_corr');
+    return saved ? JSON.parse(saved) : { az: 0, dist: 0 };
   });
 
   const [isFiring, setIsFiring] = useState(false);
 
   const [inputs, setInputs] = useState(() => {
     const savedInputs = localStorage.getItem('mision_inputs');
-    const savedPhase = localStorage.getItem('mision_estado');
-
-    let finalInputs = savedInputs ? { ...INITIAL_INPUTS, ...JSON.parse(savedInputs) } : INITIAL_INPUTS;
-
-    // Asegurarse de que el switch visual coincida con la fase al recargar
-    if (savedPhase === 'FUEGO') {
-      finalInputs.usarVariacion = false;
-    }
-
-    return finalInputs;
+    return savedInputs ? { ...INITIAL_INPUTS, ...JSON.parse(savedInputs) } : INITIAL_INPUTS;
   });
 
   const [reglaje, setReglaje] = useState(() => {
@@ -105,19 +106,24 @@ export function Calculadora() {
     return savedLogs ? JSON.parse(savedLogs).length + 1 : 1;
   });
 
-  // Efectos de Persistencia
+  // --- PERSISTENCIA ---
   useEffect(() => { localStorage.setItem('mision_inputs', JSON.stringify(inputs)); }, [inputs]);
   useEffect(() => { localStorage.setItem('mision_res', JSON.stringify(res)); }, [res]);
   useEffect(() => { localStorage.setItem('mision_reglaje', JSON.stringify(reglaje)); }, [reglaje]);
   useEffect(() => { localStorage.setItem('mision_logs', JSON.stringify(historial)); }, [historial]);
   useEffect(() => { localStorage.setItem('mision_estado', faseMision); }, [faseMision]);
-
-  // FIX 1: Persistir la variación congelada
   useEffect(() => {
-    if (variacionMision !== null) localStorage.setItem('mision_var_fija', variacionMision.toString());
-    else localStorage.removeItem('mision_var_fija');
-  }, [variacionMision]);
+    if (datosCongelados) localStorage.setItem('mision_base', JSON.stringify(datosCongelados));
+    else localStorage.removeItem('mision_base');
+  }, [datosCongelados]);
+  useEffect(() => { localStorage.setItem('mision_corr', JSON.stringify(correccionAcumulada)); }, [correccionAcumulada]);
 
+  // RESETEAR CARGA SI CAMBIA GRANADA
+  useEffect(() => {
+    setInputs((prev: any) => ({ ...prev, carga_seleccionada: '-' }));
+  }, [inputs.tipoGranada]);
+
+  // --- HANDLERS ---
   const handleNuevaMision = () => {
     if (historial.length > 0) {
       if (!window.confirm("⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo el historial y configuraciones.")) return;
@@ -126,7 +132,8 @@ export function Calculadora() {
     setHistorial([]);
     setContador(1);
     setFaseMision('PREPARACION');
-    setVariacionMision(null); // Resetear variación congelada
+    setDatosCongelados(null);
+    setCorreccionAcumulada({ az: 0, dist: 0 });
     setInputs(INITIAL_INPUTS);
     setRes(INITIAL_RES);
     setReglaje(INITIAL_REGLAJE);
@@ -134,7 +141,7 @@ export function Calculadora() {
 
   const restaurarEstado = (log: LogTiro) => {
     if (!log.snapshot) return;
-    if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?\n\nEl blanco volverá a las coordenadas guardadas.`)) return;
+    if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?`)) return;
 
     setInputs((prev: any) => ({
       ...prev,
@@ -142,8 +149,7 @@ export function Calculadora() {
       ty: log.snapshot.ty,
       ox: log.snapshot.ox,
       oy: log.snapshot.oy,
-      usarVariacion: log.snapshot.usarVariacion,
-      _manualOverride: true // Al restaurar, asumimos que queremos esos datos exactos
+      usarVariacion: log.snapshot.usarVariacion
     }));
   };
 
@@ -161,17 +167,7 @@ export function Calculadora() {
     if (id === 'check_bloqueo') setInputs((prev: any) => ({ ...prev, bloqueoMeteo: val }));
     else if (id === 'check_variacion') setInputs((prev: any) => ({ ...prev, usarVariacion: val }));
     else {
-      // Si el usuario edita manualmente las coordenadas del OBJETIVO, activamos el override
-      if (id === 'tx' || id === 'ty') {
-        setInputs((prev: any) => ({ ...prev, [id]: val, _manualOverride: true }));
-      }
-      // Si el usuario edita datos del OBSERVADOR, desactivamos el override para permitir recalculo
-      else if (['distObs', 'azObs', 'ox', 'oy'].includes(id)) {
-        setInputs((prev: any) => ({ ...prev, [id]: val, _manualOverride: false }));
-      }
-      else {
-        setInputs((prev: any) => ({ ...prev, [id]: val }));
-      }
+      setInputs((prev: any) => ({ ...prev, [id]: val }));
     }
   };
 
@@ -182,11 +178,9 @@ export function Calculadora() {
     setReglaje((prev: any) => ({ ...prev, [id]: val }));
   }
 
-  // FIX 2: Cálculo Polar (Observador -> Blanco)
-  // Ahora respetamos la bandera _manualOverride. Si es true, NO recalculamos.
+  // --- CÁLCULO POLAR VISUAL (Solo mapa) ---
   useEffect(() => {
-    if (inputs._manualOverride) return; // Si ya hay correcciones manuales, no tocar.
-
+    if (faseMision === 'FUEGO') return;
     if (inputs.distObs > 0 && inputs.ox > 0 && inputs.oy > 0) {
       let rad = (inputs.azObsUnit === 'mils') ? inputs.azObs * (Math.PI * 2 / 6400) : inputs.azObs * (Math.PI / 180);
       setInputs((prev: any) => ({
@@ -195,25 +189,49 @@ export function Calculadora() {
         ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad))
       }));
     }
-  }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, inputs._manualOverride]); // Añadida dependencia _manualOverride
+  }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, faseMision]);
 
-  // CÁLCULO PRINCIPAL DE BALÍSTICA
+  // --- CÁLCULO BALÍSTICO PRINCIPAL ---
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
 
-    // FIX 1: Lógica de Variación Magnética Congelada
-    let variacionEfectiva = 0;
-
-    // Si estamos en FUEGO y tenemos una variación guardada, usamos esa (congelada)
-    if (faseMision === 'FUEGO' && variacionMision !== null) {
-      variacionEfectiva = variacionMision;
-    } else {
-      // Si estamos en PREPARACION, obedecemos al switch dinámicamente
-      variacionEfectiva = inputs.usarVariacion ? calcularVariacionMagnetica(inputs.fecha_tiro) : 0;
-    }
-
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
     if (!geo) return;
+
+    // Calcular Variación en tiempo real (solo para PREPARACION)
+    const varGradosLive = calcularVariacionMagnetica(inputs.fecha_tiro);
+    const varMilsLive = inputs.usarVariacion ? (varGradosLive * 17.777778) : 0;
+
+    let distCalculo = 0;
+    let derivaCalculo = 0;
+    let variacionDisplay = 0;
+    let azimutMagDisplay = 0;
+
+    // =========================================================================
+    // LÓGICA DE FASE: PREPARACIÓN vs FUEGO
+    // =========================================================================
+    if (faseMision === 'PREPARACION' || !datosCongelados) {
+      // FASE 1: Usamos datos vivos del mapa y la fecha
+      azimutMagDisplay = geo.azMils - varMilsLive;
+      derivaCalculo = (inputs.orientacion_base - azimutMagDisplay + 6400) % 6400;
+      distCalculo = geo.dist;
+      variacionDisplay = varMilsLive;
+    }
+    else {
+      // FASE 2: USAMOS DATOS CONGELADOS + ACUMULADORES
+
+      // A) Variación: ESTRICTAMENTE la congelada. Ignoramos la fecha actual.
+      variacionDisplay = datosCongelados.variacionUsada;
+
+      // B) Deriva: Base Congelada - Acumulador de Azimut
+      derivaCalculo = (datosCongelados.derivaBase - correccionAcumulada.az + 6400) % 6400;
+
+      // C) Distancia: Base Congelada + Acumulador de Distancia
+      distCalculo = datosCongelados.distBase + correccionAcumulada.dist;
+
+      // D) Azimut Mag Visual: Solo para referencia
+      azimutMagDisplay = (datosCongelados.azimutBaseMag + correccionAcumulada.az + 6400) % 6400;
+    }
 
     const dataMeteo: DatosMeteo = {
       vel: inputs.meteo_vel, dir: inputs.meteo_dir, temp: inputs.meteo_temp,
@@ -230,9 +248,9 @@ export function Calculadora() {
     if (granada) {
       for (const cStr in granada.rangos) {
         const r = granada.rangos[parseInt(cStr)];
-        if (geo.dist >= r.min && geo.dist <= r.max) {
+        if (distCalculo >= r.min && distCalculo <= r.max) {
           cargasPosibles.push(cStr);
-          const buffer = r.max - geo.dist;
+          const buffer = r.max - distCalculo;
           if (cargaRecomendada === '-' || (mejorBuffer < 200 && buffer > mejorBuffer)) {
             cargaRecomendada = cStr; mejorBuffer = buffer;
           }
@@ -248,28 +266,25 @@ export function Calculadora() {
       rMax = granada.rangos[parseInt(cargaFinal)].max;
     }
 
-    const solucion = calcularBalistica(geo.dist, inputs.tipoGranada, cargaFinal, dataMeteo, geo.azMils);
-
-    const azimutMag = geo.azMils - (variacionEfectiva * 17.778) + solucion.corrDeriva;
-
-    let derivaCmd = (inputs.orientacion_base - azimutMag + 6400) % 6400;
+    const solucion = calcularBalistica(distCalculo, inputs.tipoGranada, cargaFinal, dataMeteo, 0);
 
     setRes({
       azimutMils: geo.azMils,
-      azimutMag,
-      distancia: geo.dist,
-      variacion: variacionEfectiva, // Pasamos la efectiva para mostrarla (o no) en la UI
+      azimutMag: azimutMagDisplay,
+      distancia: distCalculo,
+      variacion: variacionDisplay / 17.777778, // Convertir a grados para mostrar en Input
       cmd_orient: inputs.orientacion_base.toString(),
-      cmd_deriva: Math.round(derivaCmd).toString().padStart(4, '0'),
+      cmd_deriva: Math.round(derivaCalculo).toString().padStart(4, '0'),
       cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
       cmd_time: solucion.tiempo,
-      cmd_dist: Math.round(geo.dist).toString(),
+      cmd_dist: Math.round(distCalculo).toString(),
       carga_rec: cargaRecomendada, cargas_posibles: cargasPosibles,
       rango_min: rMin, rango_max: rMax
     });
-  }, [inputs, faseMision, variacionMision]); // Añadimos faseMision y variacionMision a dependencias
 
-  const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string) => {
+  }, [inputs, faseMision, datosCongelados, correccionAcumulada]);
+
+  const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string, dataOverride?: any) => {
     const nuevoLog: LogTiro = {
       id: contador,
       hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -279,7 +294,7 @@ export function Calculadora() {
         ox: inputs.ox, oy: inputs.oy,
         usarVariacion: inputs.usarVariacion
       },
-      fullData: {
+      fullData: dataOverride ? dataOverride : {
         inputs: { ...inputs },
         results: { ...res }
       }
@@ -291,23 +306,30 @@ export function Calculadora() {
   const handleEjecutarTiro = () => {
     if (isFiring) return;
 
-    setIsFiring(true);
-    setFaseMision('FUEGO');
+    if (faseMision === 'PREPARACION') {
+      const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
+      if (geo) {
+        const varGrados = calcularVariacionMagnetica(inputs.fecha_tiro);
+        const varMils = inputs.usarVariacion ? (varGrados * 17.777778) : 0;
+        const azMag = geo.azMils - varMils;
 
-    // FIX 1: Congelar la variación magnética al momento del primer disparo
-    if (inputs.usarVariacion) {
-      const varActual = calcularVariacionMagnetica(inputs.fecha_tiro);
-      setVariacionMision(varActual); // Guardamos la variación actual en el estado persistente
+        const derBase = (inputs.orientacion_base - azMag + 6400) % 6400;
 
-      // Apagamos el switch visualmente, pero la lógica ahora usará 'variacionMision'
-      setInputs((prev: any) => ({ ...prev, usarVariacion: false }));
-    } else if (variacionMision === null) {
-      // Si dispararon sin variación, guardamos 0 explícitamente para mantener coherencia
-      setVariacionMision(0);
+        setDatosCongelados({
+          derivaBase: derBase,
+          distBase: geo.dist,
+          variacionUsada: varMils,
+          azimutBaseMag: azMag,
+          azimutBaseGrid: geo.azMils
+        });
+        setFaseMision('FUEGO');
+      }
     }
 
-    const detalleTiro = `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev}`;
-    guardarLog('SALVA', detalleTiro, `T: ${inputs.tx} / ${inputs.ty}`);
+    setIsFiring(true);
+    // Usamos res directo aquí porque el estado ya debería estar actualizado al momento del tiro manual
+    const detalleTiro = `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev} | Deriva ${res.cmd_deriva}`;
+    guardarLog('SALVA', detalleTiro, `Dist: ${res.cmd_dist}`);
 
     setTimeout(() => {
       setIsFiring(false);
@@ -315,39 +337,72 @@ export function Calculadora() {
   };
 
   const aplicarCorreccion = () => {
-    let nuevoTx = inputs.tx;
-    let nuevoTy = inputs.ty;
+    let deltaAz = 0;
+    let deltaDist = 0;
     let detalleLog = "";
 
     if (reglaje.metodo === 'apreciacion') {
-      const dx = inputs.tx - inputs.ox;
-      const dy = inputs.ty - inputs.oy;
-      const azOT = Math.atan2(dx, dy);
+      const valorDir = reglaje.val_dir;
+      if (reglaje.dir === 'right') deltaAz = valorDir;
+      else deltaAz = -valorDir;
 
-      let offsetX = (reglaje.dir === 'right') ? reglaje.val_dir : -reglaje.val_dir;
-      let offsetY = (reglaje.rango === 'add') ? reglaje.val_rango : -reglaje.val_rango;
+      const valorRango = reglaje.val_rango;
+      if (reglaje.rango === 'add') deltaDist = valorRango;
+      else deltaDist = -valorRango;
 
-      nuevoTx = Math.round(inputs.tx - ((offsetX * Math.cos(azOT)) + (offsetY * Math.sin(azOT))));
-      nuevoTy = Math.round(inputs.ty + ((offsetY * Math.cos(azOT)) - (offsetX * Math.sin(azOT))));
-
-      detalleLog = `APR: ${reglaje.dir === 'right' ? 'Der' : 'Izq'} ${reglaje.val_dir}, ${reglaje.rango === 'add' ? '+' : '-'}${reglaje.val_rango}`;
-    } else {
+      detalleLog = `APR: ${reglaje.dir === 'right' ? 'Der' : 'Izq'} ${valorDir}, ${reglaje.rango === 'add' ? '+' : '-'}${valorRango}`;
+    }
+    else {
+      // MEDICIÓN
+      if (!datosCongelados) return;
       if (reglaje.imp_dist === 0) return;
-      let radImp = (reglaje.imp_unit === 'mils') ? reglaje.imp_az * (Math.PI * 2 / 6400) : reglaje.imp_az * (Math.PI / 180);
 
-      const impactoX = inputs.ox + reglaje.imp_dist * Math.sin(radImp);
-      const impactoY = inputs.oy + reglaje.imp_dist * Math.cos(radImp);
+      // 1. Geometría Polar desde el OBSERVADOR
+      let azObsRad = 0;
+      if (reglaje.imp_unit === 'mils') {
+        azObsRad = reglaje.imp_az * (Math.PI * 2 / 6400);
+      } else {
+        azObsRad = reglaje.imp_az * (Math.PI / 180);
+      }
 
-      nuevoTx = Math.round(inputs.tx - (impactoX - inputs.tx));
-      nuevoTy = Math.round(inputs.ty - (impactoY - inputs.ty));
+      const bx = inputs.ox + reglaje.imp_dist * Math.sin(azObsRad);
+      const by = inputs.oy + reglaje.imp_dist * Math.cos(azObsRad);
 
-      detalleLog = `MED: Impacto en Az ${reglaje.imp_az}, Dist ${reglaje.imp_dist}`;
+      // 2. Calcular datos reales hacia el estallido
+      const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
+      if (!geoEstallido) return;
+
+      // 3. Comparar con objetivo original (Grid vs Grid)
+      // Delta Azimut (Seguro contra cruce de 6400)
+      let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+      // Normalizar entre -3200 y 3200
+      if (diffAz > 3200) diffAz -= 6400;
+      if (diffAz < -3200) diffAz += 6400;
+
+      const diffDist = datosCongelados.distBase - geoEstallido.dist;
+
+      deltaAz = diffAz;
+      deltaDist = diffDist;
+
+      detalleLog = `MED: Estallido a ${Math.round(geoEstallido.dist)}m (Az ${Math.round(geoEstallido.azMils)})`;
     }
 
-    // FIX 2: Al aplicar corrección, activamos _manualOverride para proteger estos datos al recargar
-    setInputs((prev: any) => ({ ...prev, tx: nuevoTx, ty: nuevoTy, _manualOverride: true }));
+    // Calcular nuevos acumulados LOCALMENTE para guardar en el log correctamente
+    const nuevoAz = correccionAcumulada.az + deltaAz;
+    const nuevoDist = correccionAcumulada.dist + deltaDist;
 
-    guardarLog('REGLAJE', detalleLog, `T: ${nuevoTx} / ${nuevoTy}`);
+    setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
+
+    // Guardar Log forzando los datos nuevos (para evitar que guarde datos viejos por el ciclo de React)
+    const logResultOverride = {
+      ...res,
+      distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
+      // Recalcular deriva aproximada para el log (solo visual)
+      cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-'
+    };
+
+    guardarLog('REGLAJE', detalleLog, `Acum: Az ${Math.round(nuevoAz)} / Dist ${Math.round(nuevoDist)}`, { inputs, results: logResultOverride });
+
     setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
   };
 
@@ -373,7 +428,7 @@ export function Calculadora() {
                 id="tipoGranada"
                 value={inputs.tipoGranada}
                 onChange={handleChange}
-                style={{ maxWidth: '180px' }}
+                style={{ maxWidth: '180px', pointerEvents: 'auto' }}
               >
                 {Object.entries(ARSENAL).map(([id, datos]) => (
                   <option key={id} value={id}>
@@ -398,7 +453,7 @@ export function Calculadora() {
               data={inputs}
               variacion={res.variacion}
               onChange={handleChange}
-              faseBloqueada={faseMision === 'FUEGO'}
+              faseBloqueada={false}
             />
           </div>
 
