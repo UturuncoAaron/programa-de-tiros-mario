@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { LogTiro } from '../../views/Calculadora'; 
+import type { LogTiro } from '../../views/Calculadora';
 
 interface MissionLogProps {
     logs: LogTiro[];
@@ -8,94 +8,179 @@ interface MissionLogProps {
 }
 
 export function MissionLog({ logs, onRestore, onDelete }: MissionLogProps) {
-    // Estado para saber qué fila está expandida (viendo detalles)
     const [expandedId, setExpandedId] = useState<number | null>(null);
 
     const toggleDetails = (id: number) => {
-        if (expandedId === id) setExpandedId(null); // Si ya está abierto, cerrar
-        else setExpandedId(id); // Abrir
+        setExpandedId(expandedId === id ? null : id);
     }
 
     return (
-        <div className="sidebar-section flexible-height" style={{ display: 'flex', flexDirection: 'column', minHeight: '180px', border: '1px solid #444', background: '#000' }}>
+        <div className="sidebar-section flexible-height" style={{ 
+            display: 'flex', flexDirection: 'column', minHeight: '180px', 
+            border: '1px solid #333', background: '#080808', fontFamily: 'Consolas, monospace' 
+        }}>
             
-            {/* CABECERA */}
-            <div style={{ background: '#222', borderBottom: '2px solid #555', padding: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label className="section-label" style={{ position: 'static', background: 'transparent', border: 'none', margin: 0, color: '#fff', fontSize: '0.8rem' }}>
-                    BITÁCORA DE TIRO
-                </label>
-                <span style={{ fontSize: '0.6rem', color: '#888' }}>TOTAL: {logs.length}</span>
+            {/* CABECERA TÁCTICA */}
+            <div style={{ 
+                background: 'linear-gradient(90deg, #1a1a1a 0%, #000 100%)', 
+                borderBottom: '1px solid #ffb300', 
+                padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '8px', height: '8px', background: '#ffb300', borderRadius: '50%', boxShadow: '0 0 5px #ffb300' }}></div>
+                    <label style={{ margin: 0, color: '#ffb300', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: '1px' }}>
+                        BITÁCORA DE TIRO
+                    </label>
+                </div>
+                <span style={{ fontSize: '0.65rem', color: '#666', border: '1px solid #333', padding: '0 4px' }}>REG: {logs.length.toString().padStart(2, '0')}</span>
             </div>
 
-            <div className="history-list-styled" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0px' }}>
+            <div className="history-list-styled" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
                 {logs.length === 0 ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#444', fontStyle: 'italic', fontSize: '0.8rem' }}>
-                        -- SIN REGISTROS --
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#333', fontSize: '0.7rem', letterSpacing: '1px' }}>
+                        [ SIN REGISTROS DE TIRO ]
                     </div>
                 ) : (
-                    logs.map((h, index) => (
-                        <div key={h.id} style={{ borderBottom: '1px solid #222', background: index === 0 ? '#111' : '#050505' }}>
-                            
-                            {/* FILA PRINCIPAL */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 60px', alignItems: 'center', minHeight: '40px' }}>
-                                
-                                {/* ID */}
-                                <div style={{ textAlign: 'center', fontWeight: 'bold', color: h.tipo === 'SALVA' ? '#4dff88' : '#ffb300', fontSize: '0.8rem' }}>
-                                    #{h.id}
-                                </div>
+                    logs.map((h, index) => {
+                        const isExpanded = expandedId === h.id;
+                        const results = h.fullData?.results;
+                        const inputs = h.fullData?.inputs;
+                        
+                        // Extraer datos clave para vista rápida
+                        const viewDeriva = results?.cmd_deriva || '----';
+                        const viewElev = results?.cmd_elev || '----';
+                        const viewCharge = inputs?.carga_seleccionada === '-' ? results?.carga_rec : inputs?.carga_seleccionada;
 
-                                {/* INFO PRINCIPAL (CLICK PARA DETALLES) */}
+                        return (
+                            <div key={h.id} style={{ 
+                                borderBottom: '1px solid #222', 
+                                background: isExpanded ? '#111' : (index === 0 ? 'rgba(0, 50, 0, 0.2)' : 'transparent'),
+                                transition: 'background 0.2s'
+                            }}>
+                                
+                                {/* --- FILA RESUMEN (Siempre visible) --- */}
                                 <div 
                                     onClick={() => toggleDetails(h.id)}
-                                    style={{ padding: '4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', borderLeft: '1px solid #222', borderRight: '1px solid #222' }}
-                                    title="Click para ver DETALLES COMPLETOS"
+                                    style={{ 
+                                        display: 'grid', gridTemplateColumns: '35px 1fr 70px', 
+                                        alignItems: 'center', minHeight: '45px', cursor: 'pointer',
+                                        borderLeft: h.tipo === 'SALVA' ? '3px solid #ff4444' : '3px solid #00bcd4'
+                                    }}
                                 >
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#fff' }}>
-                                        {h.detalle}
-                                        {/* Indicador de que se puede expandir */}
-                                        <span style={{ float: 'right', fontSize: '0.6rem', color: '#666' }}>{expandedId === h.id ? '▲' : '▼'}</span>
-                                    </span>
-                                    <span style={{ fontSize: '0.6rem', opacity: 0.7, fontFamily: 'monospace', color: '#aaa' }}>{h.coords}</span>
-                                </div>
-
-                                {/* BOTONES ACCIÓN */}
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px' }}>
-                                    <button onClick={() => onRestore(h)} style={{ background: '#003300', border: '1px solid #005500', color: '#4dff88', borderRadius: '3px', cursor: 'pointer', width: '20px', height: '20px' }} title="Restaurar este tiro">↺</button>
-                                    <button onClick={(e) => { e.stopPropagation(); onDelete(h.id); }} style={{ background: '#330000', border: '1px solid #550000', color: '#ff4444', borderRadius: '3px', cursor: 'pointer', width: '20px', height: '20px' }} title="Borrar">✕</button>
-                                </div>
-                            </div>
-
-                            {/* PANEL DE DETALLES EXPANDIBLE (AQUÍ ESTÁ LA MAGIA) */}
-                            {expandedId === h.id && h.fullData && (
-                                <div style={{ background: '#0a0a0a', padding: '8px', borderTop: '1px dashed #333', fontSize: '0.65rem', color: '#ccc', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                    
-                                    {/* COLUMNA 1: DATOS DE TIRO */}
-                                    <div>
-                                        <div style={{ color: '#4dff88', fontWeight: 'bold', marginBottom: '2px' }}>DATOS DE TIRO</div>
-                                        <div>AZ. MAG: <span style={{ color: '#fff' }}>{Math.round(h.fullData.results.azimutMag)}</span></div>
-                                        <div>AZ. GRID: <span style={{ color: '#fff' }}>{Math.round(h.fullData.results.azimutMils)}</span></div>
-                                        <div>ELEVACIÓN: <span style={{ color: '#ffb300' }}>{h.fullData.results.cmd_elev}</span></div>
-                                        <div>TIEMPO: <span style={{ color: '#fff' }}>{h.fullData.results.cmd_time}s</span></div>
-                                        <div>CARGA: <span style={{ color: '#ffb300' }}>{h.fullData.inputs.carga_seleccionada === '-' ? h.fullData.results.carga_rec : h.fullData.inputs.carga_seleccionada}</span></div>
+                                    {/* ID */}
+                                    <div style={{ 
+                                        textAlign: 'center', fontSize: '0.7rem', color: '#666', fontWeight: 'bold' 
+                                    }}>
+                                        #{h.id}
                                     </div>
 
-                                    {/* COLUMNA 2: METEO & POSICIÓN */}
-                                    <div>
-                                        <div style={{ color: '#00bcd4', fontWeight: 'bold', marginBottom: '2px' }}>CONDICIONES</div>
-                                        <div>VIENTO: {h.fullData.inputs.meteo_dir} / {h.fullData.inputs.meteo_vel}</div>
-                                        <div>TEMP: {h.fullData.inputs.meteo_temp}°C</div>
-                                        <div>PRESIÓN: {h.fullData.inputs.meteo_pres} mb</div>
-                                        <div style={{ marginTop: '4px', borderTop: '1px solid #333', paddingTop: '2px' }}>
-                                            OBJ: {h.fullData.inputs.tx} / {h.fullData.inputs.ty}
+                                    {/* INFO CENTRAL */}
+                                    <div style={{ padding: '4px 8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                            <span style={{ 
+                                                fontSize: '0.6rem', padding: '1px 4px', borderRadius: '2px',
+                                                background: h.tipo === 'SALVA' ? '#330000' : '#002233',
+                                                color: h.tipo === 'SALVA' ? '#ff4444' : '#00bcd4',
+                                                border: `1px solid ${h.tipo === 'SALVA' ? '#550000' : '#004455'}`
+                                            }}>
+                                                {h.tipo === 'SALVA' ? 'SALVA' : 'REGLAJE'}
+                                            </span>
+                                            <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                                DER {viewDeriva} <span style={{color:'#444'}}>|</span> ALZ {viewElev}
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.6rem', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {h.detalle}
                                         </div>
                                     </div>
 
+                                    {/* CONTROLES */}
+                                    <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onRestore(h); }}
+                                            style={{ background: '#111', border: '1px solid #333', color: '#4dff88', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}
+                                            title="Restaurar Datos"
+                                        >↺</button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onDelete(h.id); }}
+                                            style={{ background: '#111', border: '1px solid #333', color: '#ff4444', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}
+                                            title="Eliminar"
+                                        >✕</button>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-                    ))
+
+                                {/* --- PANEL DE DETALLES (Expandible) --- */}
+                                {isExpanded && h.fullData && (
+                                    <div style={{ 
+                                        background: '#050505', borderTop: '1px solid #222', borderBottom: '1px solid #333',
+                                        padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px'
+                                    }}>
+                                        
+                                        {/* SECCIÓN 1: COMANDOS DE TIRO (Lo más importante) */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
+                                            <DataBox label="DERIVA" value={viewDeriva} color="#ffb300" />
+                                            <DataBox label="ELEVACIÓN" value={viewElev} color="#ffb300" />
+                                            <DataBox label="CARGA" value={viewCharge} color="#fff" />
+                                            <DataBox label="TIEMPO" value={results.cmd_time} suffix="s" color="#fff" />
+                                        </div>
+
+                                        {/* SECCIÓN 2: GEOMETRÍA Y CORRECCIÓN */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                            
+                                            {/* Datos del Blanco */}
+                                            <div style={{ border: '1px solid #222', padding: '5px' }}>
+                                                <div style={{ fontSize: '0.6rem', color: '#00bcd4', marginBottom: '4px', borderBottom: '1px solid #222' }}>DATOS BLANCO</div>
+                                                <div style={{ fontSize: '0.65rem', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>DIST:</span> <span style={{ color: '#fff' }}>{Math.round(results.distancia)} m</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>AZ MAG:</span> <span style={{ color: '#fff' }}>{Math.round(results.azimutMag)}</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>AZ GRID:</span> <span style={{ color: '#fff' }}>{Math.round(results.azimutMils)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Datos de Meteo y Posición */}
+                                            <div style={{ border: '1px solid #222', padding: '5px' }}>
+                                                <div style={{ fontSize: '0.6rem', color: '#4dff88', marginBottom: '4px', borderBottom: '1px solid #222' }}>METEO / POS</div>
+                                                <div style={{ fontSize: '0.65rem', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>VIENTO:</span> <span style={{ color: '#fff' }}>{inputs.meteo_dir}@{inputs.meteo_vel}</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>TEMP:</span> <span style={{ color: '#fff' }}>{inputs.meteo_temp}°C</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>COORD:</span> <span style={{ color: '#888' }}>{inputs.tx}/{inputs.ty}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* SECCIÓN 3: DETALLE COMPLETO (Texto) */}
+                                        <div style={{ 
+                                            fontSize: '0.65rem', color: '#666', background: '#000', 
+                                            padding: '4px', border: '1px dashed #333', fontStyle: 'italic'
+                                        }}>
+                                            LOG: {h.detalle} | T: {h.hora}
+                                        </div>
+
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
                 )}
             </div>
         </div>
     );
 }
+
+// Sub-componente simple para las cajitas de datos
+const DataBox = ({ label, value, suffix = '', color }: any) => (
+    <div style={{ background: '#111', border: '1px solid #333', padding: '4px', textAlign: 'center' }}>
+        <div style={{ fontSize: '0.55rem', color: '#666', marginBottom: '2px' }}>{label}</div>
+        <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: color }}>
+            {value}<span style={{ fontSize: '0.6rem', color: '#444' }}>{suffix}</span>
+        </div>
+    </div>
+);

@@ -6,9 +6,10 @@ interface InputConsoleProps {
     variacion: number;
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
     faseBloqueada: boolean;
+    bloquearVariacion?: boolean; // Nueva propiedad opcional
 }
 
-export function InputConsole({ data, variacion, onChange, faseBloqueada }: InputConsoleProps) {
+export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquearVariacion = false }: InputConsoleProps) {
 
     const requiereMeteo = ARSENAL[data.tipoGranada]?.requiereMeteo || false;
 
@@ -18,6 +19,13 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada }: Input
     const angSitCalc = distCalc > 0 ? Math.round((difAlt / distCalc) * 1000) : 0;
 
     const estiloBloqueado = { opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#1a1a1a' };
+
+    // Estilo especial para la variación congelada
+    const estiloVarBloqueada = bloquearVariacion ? {
+        opacity: 0.5,
+        pointerEvents: 'none' as 'none',
+        filter: 'grayscale(100%)'
+    } : {};
 
     return (
         <div className="bottom-inputs-grid">
@@ -77,11 +85,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada }: Input
                 </div>
             </div>
 
-            {/* =================================================================================
-               SECCIÓN 2: OBSERVADOR (REDISEÑADO)
-               - Labels fijos
-               - Azimut pegado a Unidad
-            ================================================================================== */}
+            {/* SECCIÓN 2: OBSERVADOR */}
             <div className="input-card">
                 <div className="card-header text-cyan">2. OBSERVADOR AVANZADO</div>
                 <div className="card-body vertical-stack">
@@ -103,8 +107,6 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada }: Input
                     <div className="group-box" style={{ marginTop: '10px' }}>
                         <label className="group-label">DATOS POLARES (OBS &rarr; OBJ)</label>
                         <div className="input-row-2" style={{ gap: '10px' }}>
-
-                            {/* AZIMUT + UNIDAD JUNTOS */}
                             <div className="tiny-field" style={{ flex: 1.5 }}>
                                 <label>AZIMUT</label>
                                 <div style={{ display: 'flex' }}>
@@ -123,21 +125,16 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada }: Input
                                     </select>
                                 </div>
                             </div>
-
-                            {/* DISTANCIA */}
                             <div className="tiny-field" style={{ flex: 1 }}>
                                 <label>DISTANCIA (mts)</label>
                                 <input type="number" id="distObs" value={data.distObs || ''} onChange={onChange} />
                             </div>
-
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* =================================================================================
-               SECCIÓN 3: BALÍSTICA (Igual, pero con labels pequeños ya definidos en CSS)
-            ================================================================================== */}
+            {/* SECCIÓN 3: BALÍSTICA & METEO */}
             <div className="input-card wide-card">
                 <div className="card-header text-yellow">
                     3. BALÍSTICA & METEO
@@ -232,11 +229,13 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada }: Input
                             <input
                                 type="date" id="fecha_tiro"
                                 value={data.fecha_tiro} onChange={onChange}
-                                disabled={faseBloqueada}
+                                disabled={faseBloqueada || bloquearVariacion}
+                                style={bloquearVariacion ? estiloBloqueado : {}}
                             />
                         </div>
 
-                        <div className="var-container">
+                        {/* CONTENEDOR DE VARIACIÓN (SE BLOQUEA VISUALMENTE SI bloquearVariacion es true) */}
+                        <div className="var-container" style={estiloVarBloqueada}>
                             <div className="var-data" style={{ opacity: data.usarVariacion ? 1 : 0.5 }}>
                                 <label>VAR MAG</label>
                                 <input type="text" value={data.usarVariacion ? variacion.toFixed(2) : "OFF"} readOnly />
@@ -246,9 +245,9 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada }: Input
                                     <input
                                         type="checkbox" id="check_variacion"
                                         checked={data.usarVariacion} onChange={onChange}
-                                        disabled={faseBloqueada}
+                                        disabled={faseBloqueada || bloquearVariacion}
                                     />
-                                    <span className="slider" style={faseBloqueada ? { cursor: 'not-allowed', opacity: 0.5 } : {}}></span>
+                                    <span className="slider" style={(faseBloqueada || bloquearVariacion) ? { cursor: 'not-allowed', opacity: 0.5 } : {}}></span>
                                 </label>
                                 <span style={{ fontSize: '0.5rem', color: data.usarVariacion ? '#4dff88' : '#666' }}>MAG</span>
                             </div>

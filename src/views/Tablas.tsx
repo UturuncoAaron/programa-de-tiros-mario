@@ -1,58 +1,85 @@
 import { useState, useMemo } from 'react';
-import { TABLAS_MAESTRAS, type FilaResumen } from '../logic/tablas_resumen';
+import { ARSENAL } from '../logic/database'; // Importamos la ÚNICA fuente de verdad
+
+// Interfaz local para la visualización plana
+interface FilaResumenVisual {
+  dist: number;
+  [key: string]: number | null; // c0, c1, c2, etc.
+}
 
 export function Tablas() {
-  // LÓGICA (INTACTA)
-  const tableKeys = useMemo(() => Object.keys(TABLAS_MAESTRAS), []);
+  
+  // 1. TRANSFORMADOR DE DATOS: Convierte el formato complejo de ARSENAL a formato plano para la tabla
+  const datosProcesados = useMemo(() => {
+    const resultado: Record<string, { nombre: string, datos: FilaResumenVisual[] }> = {};
+
+    Object.entries(ARSENAL).forEach(([key, mortero]) => {
+      const filasMap = new Map<number, FilaResumenVisual>();
+
+      // Recorremos todas las cargas disponibles
+      Object.entries(mortero.cargas).forEach(([cargaStr, filasBalisticas]) => {
+        const cargaNum = parseInt(cargaStr);
+        const colKey = `c${cargaNum}`; // "c0", "c1", "c2"...
+
+        filasBalisticas.forEach(fila => {
+          const dist = fila[0]; // La distancia siempre es el índice 0
+          const elev = fila[1]; // La elevación siempre es el índice 1
+
+          if (!filasMap.has(dist)) {
+            filasMap.set(dist, { dist });
+          }
+          // Asignamos la elevación a la columna correspondiente
+          const obj = filasMap.get(dist)!;
+          obj[colKey] = elev;
+        });
+      });
+
+      // Convertimos el Map a Array y ordenamos por distancia
+      const datosPlanos = Array.from(filasMap.values()).sort((a, b) => a.dist - b.dist);
+      
+      resultado[key] = {
+        nombre: mortero.descripcion,
+        datos: datosPlanos
+      };
+    });
+
+    return resultado;
+  }, []);
+
+  const tableKeys = useMemo(() => Object.keys(datosProcesados), [datosProcesados]);
   const [tabla1, setTabla1] = useState(tableKeys[0] || "");
   const [tabla2, setTabla2] = useState(tableKeys.length > 1 ? tableKeys[1] : tableKeys[0] || "");
   const [filtro, setFiltro] = useState('');
   const [comparar, setComparar] = useState(false);
 
-  // --- ESTILOS CSS INYECTADOS (Para scrollbars y efectos HUD) ---
+  // --- ESTILOS CSS INYECTADOS (Tus estilos originales intactos) ---
   const styles = `
-    /* Scrollbars Tácticos */
     .tactical-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
     .tactical-scroll::-webkit-scrollbar-track { background: #050505; }
     .tactical-scroll::-webkit-scrollbar-thumb { background: #333; border: 1px solid #000; }
     .tactical-scroll::-webkit-scrollbar-thumb:hover { background: #ffb300; }
-    
-    /* Inputs Numéricos Limpios */
     input[type=number]::-webkit-inner-spin-button, 
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-    
-    /* Efecto Hover en Filas */
     .table-row:hover td { background-color: rgba(255, 179, 0, 0.15) !important; color: #fff !important; cursor: crosshair; }
-    
-    /* Select Personalizado */
     .tactical-select {
-      appearance: none;
-      -webkit-appearance: none;
+      appearance: none; -webkit-appearance: none;
       background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23ffb300%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
-      background-repeat: no-repeat;
-      background-position: right 8px center;
-      background-size: 8px;
+      background-repeat: no-repeat; background-position: right 8px center; background-size: 8px;
     }
-
-    /* Animación de entrada */
     @keyframes slideIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
   `;
 
-  // Tema Visual
   const theme = {
-    bgMain: '#050a0d', // Un negro azulado muy profundo
-    bgPanel: '#0f1418',
-    border: '#2a3b45',
-    textMain: '#a0b0b8',
-    textAccent: '#ffb300', // Ámbar
-    textCyan: '#00e5ff',   // Cian Táctico
-    textHighlight: '#fff',
+    bgMain: '#050a0d', bgPanel: '#0f1418', border: '#2a3b45',
+    textMain: '#a0b0b8', textAccent: '#ffb300', textCyan: '#00e5ff', textHighlight: '#fff',
   };
 
-  // --- LÓGICA DE CÁLCULO (IGUAL) ---
+  // --- LÓGICA DE INTERPOLACIÓN (Adaptada a datosProcesados) ---
   const calcularInterpolacion = (tablaKey: string, distInput: number) => {
-    if (!TABLAS_MAESTRAS[tablaKey as keyof typeof TABLAS_MAESTRAS]) return null;
-    const datos = TABLAS_MAESTRAS[tablaKey as keyof typeof TABLAS_MAESTRAS].datos;
+    const tablaInfo = datosProcesados[tablaKey];
+    if (!tablaInfo) return null;
+    
+    const datos = tablaInfo.datos;
     if (!datos || datos.length === 0) return null;
 
     const sorted = [...datos].sort((a, b) => a.dist - b.dist);
@@ -66,39 +93,38 @@ export function Tablas() {
 
     Object.keys(lower).forEach(key => {
       if (key.startsWith('c')) {
-        const rawL = lower[key as keyof FilaResumen];
-        const rawU = upper[key as keyof FilaResumen];
+        const rawL = lower[key];
+        const rawU = upper[key];
         if (typeof rawL === 'number' && typeof rawU === 'number') {
           result[key] = Math.round(rawL + (rawU - rawL) * factor);
         } else result[key] = null;
       }
     });
-    return { result, lower, upper, nombre: TABLAS_MAESTRAS[tablaKey as keyof typeof TABLAS_MAESTRAS].nombre };
+    return { result, lower, upper, nombre: tablaInfo.nombre };
   };
 
   const distNumber = parseFloat(filtro);
   const interpol1 = filtro && !isNaN(distNumber) ? calcularInterpolacion(tabla1, distNumber) : null;
   const interpol2 = (comparar && filtro && !isNaN(distNumber)) ? calcularInterpolacion(tabla2, distNumber) : null;
 
-  // --- RENDER TABLA MEJORADO ---
+  // --- RENDER TABLA ---
   const RenderTabla = ({ tKey, isCompact }: { tKey: string, isCompact: boolean }) => {
-    const tablaData = TABLAS_MAESTRAS[tKey as keyof typeof TABLAS_MAESTRAS];
+    const tablaData = datosProcesados[tKey];
     if (!tablaData) return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555' }}>NO DATA</div>;
 
     const columnasCargas = useMemo(() => {
       const keys = new Set<string>();
       tablaData.datos.forEach(row => Object.keys(row).forEach(k => {
-        const val = row[k as keyof FilaResumen];
-        if (k.startsWith('c') && val !== null) keys.add(k);
+        if (k.startsWith('c') && row[k] !== undefined && row[k] !== null) keys.add(k);
       }));
-      return Array.from(keys).sort();
+      // Ordenar numéricamente las cargas (c0, c1, c2...)
+      return Array.from(keys).sort((a, b) => parseInt(a.substring(1)) - parseInt(b.substring(1)));
     }, [tablaData]);
 
     const primaryColor = isCompact && tKey === tabla2 ? theme.textCyan : theme.textAccent;
 
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: `1px solid ${theme.border}`, position: 'relative' }}>
-        {/* Decoración HUD Esquina */}
         <div style={{ position: 'absolute', top: 0, left: 0, width: '10px', height: '10px', borderTop: `2px solid ${primaryColor}`, borderLeft: `2px solid ${primaryColor}`, zIndex: 20 }}></div>
         <div style={{ position: 'absolute', bottom: 0, right: 0, width: '10px', height: '10px', borderBottom: `2px solid ${primaryColor}`, borderRight: `2px solid ${primaryColor}`, zIndex: 20 }}></div>
 
@@ -121,7 +147,8 @@ export function Tablas() {
             <tbody>
               {tablaData.datos.map((row, idx) => {
                 const distFiltro = parseInt(filtro);
-                const highlight = filtro && !isNaN(distFiltro) && Math.abs(row.dist - distFiltro) < (tablaData.datos[1].dist - tablaData.datos[0].dist) / 2;
+                // Resaltar si la distancia está cerca de la búsqueda
+                const highlight = filtro && !isNaN(distFiltro) && Math.abs(row.dist - distFiltro) < 50; // Tolerancia de 50m
 
                 return (
                   <tr key={idx} className="table-row" style={{
@@ -133,10 +160,10 @@ export function Tablas() {
                       {row.dist}
                     </td>
                     {columnasCargas.map(cKey => {
-                      const val = row[cKey as keyof FilaResumen];
+                      const val = row[cKey];
                       return (
                         <td key={cKey} style={{ borderRight: `1px solid #1a252b`, padding: '4px 0', opacity: val ? 1 : 0.3 }}>
-                          {val !== null ? val : '·'}
+                          {val !== undefined && val !== null ? val : '·'}
                         </td>
                       );
                     })}
@@ -159,10 +186,8 @@ export function Tablas() {
         display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'end', marginBottom: '15px', padding: '15px',
         background: theme.bgPanel, border: `1px solid ${theme.border}`, position: 'relative', boxShadow: '0 5px 15px rgba(0,0,0,0.3)'
       }}>
-        {/* Decoración HUD */}
         <div style={{ position: 'absolute', top: -1, left: -1, width: '15px', height: '15px', borderTop: `2px solid ${theme.textAccent}`, borderLeft: `2px solid ${theme.textAccent}` }}></div>
 
-        {/* Control Tabla 1 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
           <label style={{ fontSize: '0.7rem', color: theme.textAccent, fontWeight: 'bold', letterSpacing: '1px' }}>MUNICIÓN 1</label>
           <select
@@ -173,11 +198,10 @@ export function Tablas() {
               padding: '8px', fontSize: '0.9rem', fontFamily: 'Share Tech Mono', outline: 'none'
             }}
           >
-            {tableKeys.map(k => <option key={k} value={k}>{TABLAS_MAESTRAS[k as keyof typeof TABLAS_MAESTRAS].nombre}</option>)}
+            {tableKeys.map(k => <option key={k} value={k}>{datosProcesados[k].nombre}</option>)}
           </select>
         </div>
 
-        {/* Switch Comparar */}
         <div style={{ display: 'flex', alignItems: 'center', height: '40px', padding: '0 15px', borderLeft: `1px solid ${theme.border}`, borderRight: `1px solid ${theme.border}` }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
             <div style={{ width: '40px', height: '20px', background: comparar ? theme.textAccent : '#333', borderRadius: '2px', position: 'relative', transition: '0.2s' }}>
@@ -191,7 +215,6 @@ export function Tablas() {
           </label>
         </div>
 
-        {/* Control Tabla 2 */}
         {comparar && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', animation: 'slideIn 0.3s' }}>
             <label style={{ fontSize: '0.7rem', color: theme.textCyan, fontWeight: 'bold', letterSpacing: '1px' }}>MUNICIÓN 2</label>
@@ -204,12 +227,11 @@ export function Tablas() {
                 backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2300e5ff%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")`
               }}
             >
-              {tableKeys.map(k => <option key={k} value={k}>{TABLAS_MAESTRAS[k as keyof typeof TABLAS_MAESTRAS].nombre}</option>)}
+              {tableKeys.map(k => <option key={k} value={k}>{datosProcesados[k].nombre}</option>)}
             </select>
           </div>
         )}
 
-        {/* Input Buscador */}
         <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: '5px' }}>
           <label style={{ fontSize: '0.7rem', color: '#fff', fontWeight: 'bold', textAlign: 'right', letterSpacing: '1px' }}>BUSCAR RANGO</label>
           <div style={{ position: 'relative' }}>
@@ -249,7 +271,7 @@ export function Tablas() {
 
           <div className="tactical-scroll" style={{ display: 'flex', gap: '15px', overflowX: 'auto', padding: '15px', alignItems: 'center' }}>
 
-            {Object.keys(interpol1.result).filter(k => k.startsWith('c')).map(k => {
+            {Object.keys(interpol1.result).filter(k => k.startsWith('c')).sort((a, b) => parseInt(a.substring(1)) - parseInt(b.substring(1))).map(k => {
               const val1 = interpol1.result[k];
               const val2 = interpol2 ? interpol2.result[k] : null;
               if (val1 === null && (!val2 || val2 === null)) return null;
@@ -262,12 +284,10 @@ export function Tablas() {
                   display: 'flex', flexDirection: 'column', minWidth: '80px', background: '#0e0e0e',
                   border: `1px solid ${theme.border}`, position: 'relative'
                 }}>
-                  {/* Header Carga */}
                   <div style={{ background: '#1a1a1a', color: '#aaa', fontSize: '0.7rem', textAlign: 'center', padding: '4px', fontWeight: 'bold' }}>
                     {k.toUpperCase()}
                   </div>
 
-                  {/* Body Valores */}
                   <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
                     <span style={{ color: theme.textAccent, fontWeight: 'bold', fontSize: '1.4rem', fontFamily: 'Share Tech Mono', lineHeight: '1' }}>
                       {val1 !== null ? val1 : '-'}

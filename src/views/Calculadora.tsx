@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ARSENAL } from '../logic/database';
 import { calcularBalistica, type DatosMeteo } from '../logic/balistica';
 import { calcularGeometria, calcularVariacionMagnetica } from '../logic/calculos';
@@ -22,6 +22,7 @@ export interface LogTiro {
   fullData?: {
     inputs: any;
     results: any;
+    impacto?: { x: number, y: number }; // <--- NUEVO: Para guardar dónde cayó
   };
 }
 
@@ -62,13 +63,12 @@ export function Calculadora() {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
 
-  // DATOS CONGELADOS: Guardamos también el AZIMUT GRID ORIGINAL para comparar con el estallido
   const [datosCongelados, setDatosCongelados] = useState<{
     derivaBase: number,
     distBase: number,
     variacionUsada: number,
     azimutBaseMag: number,
-    azimutBaseGrid: number // Nuevo: Necesario para comparar estallido vs objetivo real
+    azimutBaseGrid: number
   } | null>(() => {
     const saved = localStorage.getItem('mision_base');
     return saved ? JSON.parse(saved) : null;
@@ -106,6 +106,8 @@ export function Calculadora() {
     return savedLogs ? JSON.parse(savedLogs).length + 1 : 1;
   });
 
+  const lastGranada = useRef(inputs.tipoGranada);
+
   // --- PERSISTENCIA ---
   useEffect(() => { localStorage.setItem('mision_inputs', JSON.stringify(inputs)); }, [inputs]);
   useEffect(() => { localStorage.setItem('mision_res', JSON.stringify(res)); }, [res]);
@@ -118,9 +120,12 @@ export function Calculadora() {
   }, [datosCongelados]);
   useEffect(() => { localStorage.setItem('mision_corr', JSON.stringify(correccionAcumulada)); }, [correccionAcumulada]);
 
-  // RESETEAR CARGA SI CAMBIA GRANADA
+  // RESETEO DE CARGA CONTROLADO
   useEffect(() => {
-    setInputs((prev: any) => ({ ...prev, carga_seleccionada: '-' }));
+    if (inputs.tipoGranada !== lastGranada.current) {
+      setInputs((prev: any) => ({ ...prev, carga_seleccionada: '-' }));
+      lastGranada.current = inputs.tipoGranada;
+    }
   }, [inputs.tipoGranada]);
 
   // --- HANDLERS ---
@@ -137,6 +142,7 @@ export function Calculadora() {
     setInputs(INITIAL_INPUTS);
     setRes(INITIAL_RES);
     setReglaje(INITIAL_REGLAJE);
+    lastGranada.current = INITIAL_INPUTS.tipoGranada;
   };
 
   const restaurarEstado = (log: LogTiro) => {
@@ -178,7 +184,7 @@ export function Calculadora() {
     setReglaje((prev: any) => ({ ...prev, [id]: val }));
   }
 
-  // --- CÁLCULO POLAR VISUAL (Solo mapa) ---
+  // --- CÁLCULO POLAR VISUAL ---
   useEffect(() => {
     if (faseMision === 'FUEGO') return;
     if (inputs.distObs > 0 && inputs.ox > 0 && inputs.oy > 0) {
@@ -191,14 +197,13 @@ export function Calculadora() {
     }
   }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, faseMision]);
 
-  // --- CÁLCULO BALÍSTICO PRINCIPAL ---
+  // --- CÁLCULO BALÍSTICO ---
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
 
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
     if (!geo) return;
 
-    // Calcular Variación en tiempo real (solo para PREPARACION)
     const varGradosLive = calcularVariacionMagnetica(inputs.fecha_tiro);
     const varMilsLive = inputs.usarVariacion ? (varGradosLive * 17.777778) : 0;
 
@@ -207,29 +212,16 @@ export function Calculadora() {
     let variacionDisplay = 0;
     let azimutMagDisplay = 0;
 
-    // =========================================================================
-    // LÓGICA DE FASE: PREPARACIÓN vs FUEGO
-    // =========================================================================
     if (faseMision === 'PREPARACION' || !datosCongelados) {
-      // FASE 1: Usamos datos vivos del mapa y la fecha
       azimutMagDisplay = geo.azMils - varMilsLive;
       derivaCalculo = (inputs.orientacion_base - azimutMagDisplay + 6400) % 6400;
       distCalculo = geo.dist;
       variacionDisplay = varMilsLive;
     }
     else {
-      // FASE 2: USAMOS DATOS CONGELADOS + ACUMULADORES
-
-      // A) Variación: ESTRICTAMENTE la congelada. Ignoramos la fecha actual.
       variacionDisplay = datosCongelados.variacionUsada;
-
-      // B) Deriva: Base Congelada - Acumulador de Azimut
       derivaCalculo = (datosCongelados.derivaBase - correccionAcumulada.az + 6400) % 6400;
-
-      // C) Distancia: Base Congelada + Acumulador de Distancia
       distCalculo = datosCongelados.distBase + correccionAcumulada.dist;
-
-      // D) Azimut Mag Visual: Solo para referencia
       azimutMagDisplay = (datosCongelados.azimutBaseMag + correccionAcumulada.az + 6400) % 6400;
     }
 
@@ -272,7 +264,7 @@ export function Calculadora() {
       azimutMils: geo.azMils,
       azimutMag: azimutMagDisplay,
       distancia: distCalculo,
-      variacion: variacionDisplay / 17.777778, // Convertir a grados para mostrar en Input
+      variacion: variacionDisplay / 17.777778,
       cmd_orient: inputs.orientacion_base.toString(),
       cmd_deriva: Math.round(derivaCalculo).toString().padStart(4, '0'),
       cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
@@ -327,7 +319,6 @@ export function Calculadora() {
     }
 
     setIsFiring(true);
-    // Usamos res directo aquí porque el estado ya debería estar actualizado al momento del tiro manual
     const detalleTiro = `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev} | Deriva ${res.cmd_deriva}`;
     guardarLog('SALVA', detalleTiro, `Dist: ${res.cmd_dist}`);
 
@@ -340,6 +331,10 @@ export function Calculadora() {
     let deltaAz = 0;
     let deltaDist = 0;
     let detalleLog = "";
+
+    // Variables para guardar dónde fue el impacto
+    let impactoX = 0;
+    let impactoY = 0;
 
     if (reglaje.metodo === 'apreciacion') {
       const valorDir = reglaje.val_dir;
@@ -357,7 +352,6 @@ export function Calculadora() {
       if (!datosCongelados) return;
       if (reglaje.imp_dist === 0) return;
 
-      // 1. Geometría Polar desde el OBSERVADOR
       let azObsRad = 0;
       if (reglaje.imp_unit === 'mils') {
         azObsRad = reglaje.imp_az * (Math.PI * 2 / 6400);
@@ -365,17 +359,18 @@ export function Calculadora() {
         azObsRad = reglaje.imp_az * (Math.PI / 180);
       }
 
+      // CALCULAR COORDENADAS DE IMPACTO
       const bx = inputs.ox + reglaje.imp_dist * Math.sin(azObsRad);
       const by = inputs.oy + reglaje.imp_dist * Math.cos(azObsRad);
 
-      // 2. Calcular datos reales hacia el estallido
+      // Guardamos para el log
+      impactoX = Math.round(bx);
+      impactoY = Math.round(by);
+
       const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
       if (!geoEstallido) return;
 
-      // 3. Comparar con objetivo original (Grid vs Grid)
-      // Delta Azimut (Seguro contra cruce de 6400)
       let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-      // Normalizar entre -3200 y 3200
       if (diffAz > 3200) diffAz -= 6400;
       if (diffAz < -3200) diffAz += 6400;
 
@@ -387,21 +382,27 @@ export function Calculadora() {
       detalleLog = `MED: Estallido a ${Math.round(geoEstallido.dist)}m (Az ${Math.round(geoEstallido.azMils)})`;
     }
 
-    // Calcular nuevos acumulados LOCALMENTE para guardar en el log correctamente
     const nuevoAz = correccionAcumulada.az + deltaAz;
     const nuevoDist = correccionAcumulada.dist + deltaDist;
 
     setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
 
-    // Guardar Log forzando los datos nuevos (para evitar que guarde datos viejos por el ciclo de React)
     const logResultOverride = {
       ...res,
       distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
-      // Recalcular deriva aproximada para el log (solo visual)
       cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-'
     };
 
-    guardarLog('REGLAJE', detalleLog, `Acum: Az ${Math.round(nuevoAz)} / Dist ${Math.round(nuevoDist)}`, { inputs, results: logResultOverride });
+    // AQUI ESTA LA CLAVE: Guardamos "impacto" en fullData si existe
+    const extraData: any = {
+      inputs: { ...inputs },
+      results: logResultOverride
+    };
+    if (impactoX > 0 && impactoY > 0) {
+      extraData.impacto = { x: impactoX, y: impactoY };
+    }
+
+    guardarLog('REGLAJE', detalleLog, `Solución: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`, extraData);
 
     setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
   };
@@ -448,12 +449,14 @@ export function Calculadora() {
               ox={inputs.ox} oy={inputs.oy}
               historial={historial}
               orientacion_base={inputs.orientacion_base}
+              rangoCarga={{ min: res.rango_min, max: res.rango_max }}
             />
             <InputConsole
               data={inputs}
               variacion={res.variacion}
               onChange={handleChange}
               faseBloqueada={false}
+              bloquearVariacion={faseMision === 'FUEGO'}
             />
           </div>
 
