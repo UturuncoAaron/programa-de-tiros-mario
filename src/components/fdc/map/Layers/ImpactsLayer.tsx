@@ -28,7 +28,6 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
         const iconImpacto = getDivIcon(ICONS.IMPACTO, [20, 20], [10, 10]);
         const targetPos = utmToLatLng(tx, ty, 18, true);
 
-        // Vector unitario de tiro
         const deltaY = ty - my; const deltaX = tx - mx;
         const distTiro = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         let uX = 0, uY = 0;
@@ -42,7 +41,6 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
             if (hTx > 0 && hTy > 0) {
                 const hPos = utmToLatLng(hTx, hTy, 18, true);
                 if (!isNaN(hPos[0])) {
-                    // Cálculo de valores
                     const errorTac = calcularValoresError(mx, my, tx, ty, hTx, hTy);
                     
                     const popupContent = `
@@ -51,31 +49,34 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
                         <div>ALCANCE: <span style="color:${errorTac.alcance > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.alcance > 0 ? 'LARGO' : 'CORTO'} ${Math.abs(errorTac.alcance)}m</span></div>
                         <div>DIRECCIÓN: <span style="color:${errorTac.direccion > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.direccion > 0 ? 'DER' : 'IZQ'} ${Math.abs(errorTac.direccion)}m</span></div></div></div>`;
                     
+                    L.circle(hPos, {
+                        radius: 25,
+                        color: '#ff3300',
+                        fillColor: '#ff3300',
+                        fillOpacity: 0.3,
+                        weight: 1,
+                        dashArray: '3, 3'
+                    }).addTo(layersRef.current.impacts!);
+
                     L.marker(hPos, { icon: iconImpacto })
                         .bindPopup(popupContent, { className: 'popup-tactico' })
                         .addTo(layersRef.current.impacts!);
 
-                    // Dibujar Triángulo Completo si "Ojo" está activo
                     if (showLabels && targetPos && !isNaN(targetPos[0])) {
                         const distErrorTotal = Math.sqrt(Math.pow(hTx - tx, 2) + Math.pow(hTy - ty, 2));
                         
                         if (distErrorTotal > 10) {
                             const errAlcanceScalar = ((hTx - tx) * uX) + ((hTy - ty) * uY);
                             
-                            // Punto Vértice
                             const vx = tx + errAlcanceScalar * uX;
                             const vy = ty + errAlcanceScalar * uY;
                             const vPos = utmToLatLng(vx, vy, 18, true);
 
                             if (!isNaN(vPos[0])) {
-                                // 1. HIPOTENUSA (Roja)
                                 L.polyline([hPos, targetPos], { color: '#ff4444', weight: 1.5, dashArray: '4, 4', opacity: 0.6 }).addTo(layersRef.current.labels!);
-                                // 2. ALCANCE (Cian)
                                 L.polyline([targetPos, vPos], { color: '#00e5ff', weight: 1.5, opacity: 0.8 }).addTo(layersRef.current.labels!);
-                                // 3. DIRECCIÓN (Naranja)
                                 L.polyline([vPos, hPos], { color: '#ffb300', weight: 1.5, opacity: 0.8 }).addTo(layersRef.current.labels!);
 
-                                // ETIQUETAS
                                 const midV_T = [(vPos[0] + targetPos[0]) / 2, (vPos[1] + targetPos[1]) / 2] as L.LatLngExpression;
                                 const midH_V = [(hPos[0] + vPos[0]) / 2, (hPos[1] + vPos[1]) / 2] as L.LatLngExpression;
                                 const midHyp = [(hPos[0] + targetPos[0]) / 2, (hPos[1] + targetPos[1]) / 2] as L.LatLngExpression;

@@ -43,6 +43,7 @@
   "build": {
     "appId": "com.morteros.maria",
     "productName": "SISTEMA DE TIRO MORTEROS MARIA",
+    "compression": "maximum",
     "directories": {
       "output": "release"
     },
@@ -53,6 +54,11 @@
     "win": {
       "target": "nsis",
       "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true
     }
   }
 }

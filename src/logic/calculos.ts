@@ -10,7 +10,7 @@ function getGeomagnetism() {
 
 
 export function calcularVariacionWMM(mx: number, my: number): number {
-    const DEFAULT_VAR_MILS = -43; // Valor de seguridad
+    const DEFAULT_VAR_MILS = -43; 
 
     if (!mx || !my || mx === 0) return DEFAULT_VAR_MILS;
 
@@ -19,37 +19,25 @@ export function calcularVariacionWMM(mx: number, my: number): number {
 
         if (isNaN(lat) || isNaN(lon)) return DEFAULT_VAR_MILS;
 
-        // --- SOLUCIÓN DEL CRASH ---
         const lib = getGeomagnetism();
         
-        // Verificamos que la función .model exista antes de llamarla
         if (typeof lib.model !== 'function') {
             console.error("Error crítico: La librería geomagnetism no cargó la función .model()", lib);
             return DEFAULT_VAR_MILS;
         }
-
-        // Cargamos el modelo (usa wmm-2025 automáticamente)
         const model = lib.model(); 
         const info = model.point([lat, lon]);
-        
-        // Extraemos declinación (propiedad .decl)
         const declinacionGrados = info.decl;
-
-        // Convertimos a Milésimas
         const declinacionMils = declinacionGrados * FACTOR_CONVERSION;
 
         return parseFloat(declinacionMils.toFixed(2));
 
     } catch (e) {
         console.error("ERROR CONTROLADO EN WMM:", e);
-        // Si falla, no rompe la app, solo devuelve el valor por defecto
         return DEFAULT_VAR_MILS;
     }
 }
 
-/**
- * Calcula Distancia y Acimut
- */
 export function calcularGeometria(mx: number, my: number, tx: number, ty: number) {
     if (isNaN(mx) || isNaN(my) || isNaN(tx) || isNaN(ty)) return null;
 
@@ -58,7 +46,6 @@ export function calcularGeometria(mx: number, my: number, tx: number, ty: number
     const dist = Math.sqrt(dx * dx + dy * dy);
     let azRadianes = Math.atan2(dx, dy);
 
-    // Radianes -> Milésimas
     let azMils = azRadianes * 6400 / (Math.PI * 2);
 
     if (azMils < 0) azMils += 6400;
@@ -69,9 +56,7 @@ export function calcularGeometria(mx: number, my: number, tx: number, ty: number
     };
 }
 
-/**
- * UTM a Lat/Lon (Standard WGS84)
- */
+
 export function utmToLatLng(x: number, y: number, zone: number, southHemi: boolean = true): [number, number] {
     const a = 6378137.0; 
     const f = 1 / 298.257223563;
