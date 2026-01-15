@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ARSENAL } from '../logic/database';
 import { calcularBalistica, type DatosMeteo } from '../logic/balistica';
-import { calcularGeometria, calcularVariacionMagnetica } from '../logic/calculos';
-import { TacticalMap } from '../components/fdc/TacticalMap';
+import { calcularGeometria, calcularVariacionWMM } from '../logic/calculos';
+import { TacticalMap } from '../components/fdc/map/TacticalMap';
 import { InputConsole } from '../components/fdc/InputConsole';
 import { SolutionDisplay } from '../components/fdc/SolutionDisplay';
 import { CorrectionPanel } from '../components/fdc/CorrectionPanel';
@@ -22,7 +22,7 @@ export interface LogTiro {
   fullData?: {
     inputs: any;
     results: any;
-    impacto?: { x: number, y: number }; // <--- NUEVO: Para guardar dónde cayó
+    impacto?: { x: number, y: number };
   };
 }
 
@@ -57,8 +57,6 @@ const INITIAL_REGLAJE = {
 };
 
 export function Calculadora() {
-
-  // --- ESTADOS ---
   const [faseMision, setFaseMision] = useState<'PREPARACION' | 'FUEGO'>(() => {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
@@ -108,7 +106,6 @@ export function Calculadora() {
 
   const lastGranada = useRef(inputs.tipoGranada);
 
-  // --- PERSISTENCIA ---
   useEffect(() => { localStorage.setItem('mision_inputs', JSON.stringify(inputs)); }, [inputs]);
   useEffect(() => { localStorage.setItem('mision_res', JSON.stringify(res)); }, [res]);
   useEffect(() => { localStorage.setItem('mision_reglaje', JSON.stringify(reglaje)); }, [reglaje]);
@@ -120,7 +117,6 @@ export function Calculadora() {
   }, [datosCongelados]);
   useEffect(() => { localStorage.setItem('mision_corr', JSON.stringify(correccionAcumulada)); }, [correccionAcumulada]);
 
-  // RESETEO DE CARGA CONTROLADO
   useEffect(() => {
     if (inputs.tipoGranada !== lastGranada.current) {
       setInputs((prev: any) => ({ ...prev, carga_seleccionada: '-' }));
@@ -128,7 +124,6 @@ export function Calculadora() {
     }
   }, [inputs.tipoGranada]);
 
-  // --- HANDLERS ---
   const handleNuevaMision = () => {
     if (historial.length > 0) {
       if (!window.confirm("⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo el historial y configuraciones.")) return;
@@ -184,7 +179,6 @@ export function Calculadora() {
     setReglaje((prev: any) => ({ ...prev, [id]: val }));
   }
 
-  // --- CÁLCULO POLAR VISUAL ---
   useEffect(() => {
     if (faseMision === 'FUEGO') return;
     if (inputs.distObs > 0 && inputs.ox > 0 && inputs.oy > 0) {
@@ -197,15 +191,21 @@ export function Calculadora() {
     }
   }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, faseMision]);
 
-  // --- CÁLCULO BALÍSTICO ---
+  useEffect(() => {
+    if (faseMision === 'PREPARACION') {
+      const nuevaVariacionMils = calcularVariacionWMM(inputs.mx, inputs.my);
+      setRes((prev: any) => ({
+        ...prev,
+        variacion: nuevaVariacionMils
+      }));
+    }
+  }, [inputs.mx, inputs.my, faseMision]);
+
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
 
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
     if (!geo) return;
-
-    const varGradosLive = calcularVariacionMagnetica(inputs.fecha_tiro);
-    const varMilsLive = inputs.usarVariacion ? (varGradosLive * 17.777778) : 0;
 
     let distCalculo = 0;
     let derivaCalculo = 0;
@@ -213,6 +213,7 @@ export function Calculadora() {
     let azimutMagDisplay = 0;
 
     if (faseMision === 'PREPARACION' || !datosCongelados) {
+      const varMilsLive = inputs.usarVariacion ? res.variacion : 0;
       azimutMagDisplay = geo.azMils - varMilsLive;
       derivaCalculo = (inputs.orientacion_base - azimutMagDisplay + 6400) % 6400;
       distCalculo = geo.dist;
@@ -260,11 +261,12 @@ export function Calculadora() {
 
     const solucion = calcularBalistica(distCalculo, inputs.tipoGranada, cargaFinal, dataMeteo, 0);
 
-    setRes({
+    setRes((prev: any) => ({
+      ...prev,
       azimutMils: geo.azMils,
       azimutMag: azimutMagDisplay,
       distancia: distCalculo,
-      variacion: variacionDisplay / 17.777778,
+      variacion: variacionDisplay,
       cmd_orient: inputs.orientacion_base.toString(),
       cmd_deriva: Math.round(derivaCalculo).toString().padStart(4, '0'),
       cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
@@ -272,9 +274,9 @@ export function Calculadora() {
       cmd_dist: Math.round(distCalculo).toString(),
       carga_rec: cargaRecomendada, cargas_posibles: cargasPosibles,
       rango_min: rMin, rango_max: rMax
-    });
+    }));
 
-  }, [inputs, faseMision, datosCongelados, correccionAcumulada]);
+  }, [inputs, faseMision, datosCongelados, correccionAcumulada, res.variacion]);
 
   const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string, dataOverride?: any) => {
     const nuevoLog: LogTiro = {
@@ -301,10 +303,8 @@ export function Calculadora() {
     if (faseMision === 'PREPARACION') {
       const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
       if (geo) {
-        const varGrados = calcularVariacionMagnetica(inputs.fecha_tiro);
-        const varMils = inputs.usarVariacion ? (varGrados * 17.777778) : 0;
+        const varMils = inputs.usarVariacion ? res.variacion : 0;
         const azMag = geo.azMils - varMils;
-
         const derBase = (inputs.orientacion_base - azMag + 6400) % 6400;
 
         setDatosCongelados({
@@ -331,8 +331,6 @@ export function Calculadora() {
     let deltaAz = 0;
     let deltaDist = 0;
     let detalleLog = "";
-
-    // Variables para guardar dónde fue el impacto
     let impactoX = 0;
     let impactoY = 0;
 
@@ -348,7 +346,6 @@ export function Calculadora() {
       detalleLog = `APR: ${reglaje.dir === 'right' ? 'Der' : 'Izq'} ${valorDir}, ${reglaje.rango === 'add' ? '+' : '-'}${valorRango}`;
     }
     else {
-      // MEDICIÓN
       if (!datosCongelados) return;
       if (reglaje.imp_dist === 0) return;
 
@@ -359,11 +356,9 @@ export function Calculadora() {
         azObsRad = reglaje.imp_az * (Math.PI / 180);
       }
 
-      // CALCULAR COORDENADAS DE IMPACTO
       const bx = inputs.ox + reglaje.imp_dist * Math.sin(azObsRad);
       const by = inputs.oy + reglaje.imp_dist * Math.cos(azObsRad);
 
-      // Guardamos para el log
       impactoX = Math.round(bx);
       impactoY = Math.round(by);
 
@@ -393,7 +388,6 @@ export function Calculadora() {
       cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-'
     };
 
-    // AQUI ESTA LA CLAVE: Guardamos "impacto" en fullData si existe
     const extraData: any = {
       inputs: { ...inputs },
       results: logResultOverride
