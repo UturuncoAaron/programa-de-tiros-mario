@@ -1,4 +1,5 @@
 import * as geomagnetismRaw from 'geomagnetism';
+
 const MIL_OTAN = 6400;
 const GRADOS_CIRCULO = 360;
 const FACTOR_CONVERSION = MIL_OTAN / GRADOS_CIRCULO;
@@ -8,24 +9,28 @@ function getGeomagnetism() {
     return geomagnetismRaw.default || geomagnetismRaw;
 }
 
-
-export function calcularVariacionWMM(mx: number, my: number): number {
-    const DEFAULT_VAR_MILS = -43; 
+// --- CAMBIO IMPORTANTE AQUÍ ABAJO ---
+// Ahora recibimos 'zona' (por defecto 18 si no se pasa nada)
+export function calcularVariacionWMM(mx: number, my: number, zona: number = 18): number {
+    const DEFAULT_VAR_MILS = -43;
 
     if (!mx || !my || mx === 0) return DEFAULT_VAR_MILS;
 
     try {
-        const [lat, lon] = utmToLatLng(mx, my, 18, true);
+        // --- AQUÍ ESTABA EL ERROR ---
+        // Antes decía: utmToLatLng(mx, my, 18, true);
+        // Ahora dice:
+        const [lat, lon] = utmToLatLng(mx, my, zona, true);
 
         if (isNaN(lat) || isNaN(lon)) return DEFAULT_VAR_MILS;
 
         const lib = getGeomagnetism();
-        
+
         if (typeof lib.model !== 'function') {
             console.error("Error crítico: La librería geomagnetism no cargó la función .model()", lib);
             return DEFAULT_VAR_MILS;
         }
-        const model = lib.model(); 
+        const model = lib.model();
         const info = model.point([lat, lon]);
         const declinacionGrados = info.decl;
         const declinacionMils = declinacionGrados * FACTOR_CONVERSION;
@@ -50,21 +55,21 @@ export function calcularGeometria(mx: number, my: number, tx: number, ty: number
 
     if (azMils < 0) azMils += 6400;
 
-    return { 
-        dist: parseFloat(dist.toFixed(1)), 
-        azMils: parseFloat(azMils.toFixed(0)) 
+    return {
+        dist: parseFloat(dist.toFixed(1)),
+        azMils: parseFloat(azMils.toFixed(0))
     };
 }
 
 
 export function utmToLatLng(x: number, y: number, zone: number, southHemi: boolean = true): [number, number] {
-    const a = 6378137.0; 
+    const a = 6378137.0;
     const f = 1 / 298.257223563;
-    const k0 = 0.9996; 
+    const k0 = 0.9996;
     const e = Math.sqrt(f * (2 - f));
     const e1sq = e * e / (1 - e * e);
     const xBase = x - 500000;
-    const yBase = southHemi ? y - 10000000 : y; 
+    const yBase = southHemi ? y - 10000000 : y;
     const M = yBase / k0;
     const mu = M / (a * (1 - Math.pow(e, 2) / 4 - 3 * Math.pow(e, 4) / 64 - 5 * Math.pow(e, 6) / 256));
     const e1 = (1 - Math.sqrt(1 - e * e)) / (1 + Math.sqrt(1 - e * e));

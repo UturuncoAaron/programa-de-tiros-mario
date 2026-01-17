@@ -18,6 +18,7 @@ export interface LogTiro {
     tx: number; ty: number;
     ox: number; oy: number;
     usarVariacion: boolean;
+    zona: number; // <--- NUEVO: Guardar zona en el historial
   };
   fullData?: {
     inputs: any;
@@ -30,6 +31,7 @@ const INITIAL_INPUTS = {
   mx: 0, my: 0, alt_pieza: 0,
   tx: 0, ty: 0, alt_obj: 0,
   ox: 0, oy: 0,
+  zona: 18, // <--- NUEVO: Zona por defecto (Sierra/Centro)
   distObs: 0, azObs: 0, azObsUnit: 'mils',
   tipoGranada: 'W87',
   fecha_tiro: new Date().toISOString().split('T')[0],
@@ -150,7 +152,8 @@ export function Calculadora() {
       ty: log.snapshot.ty,
       ox: log.snapshot.ox,
       oy: log.snapshot.oy,
-      usarVariacion: log.snapshot.usarVariacion
+      usarVariacion: log.snapshot.usarVariacion,
+      zona: log.snapshot.zona || 18 // <--- Restaurar zona
     }));
   };
 
@@ -164,6 +167,11 @@ export function Calculadora() {
     let val: any = value;
     if (type === 'number') val = parseFloat(value) || 0;
     if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
+
+    // Manejo especial para el Select de Zona (asegurar que sea número)
+    if (id === 'zona') {
+       val = parseInt(value); 
+    }
 
     if (id === 'check_bloqueo') setInputs((prev: any) => ({ ...prev, bloqueoMeteo: val }));
     else if (id === 'check_variacion') setInputs((prev: any) => ({ ...prev, usarVariacion: val }));
@@ -191,15 +199,17 @@ export function Calculadora() {
     }
   }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, faseMision]);
 
+  // --- CALCULAR VARIACIÓN MAGNÉTICA (Con Zona) ---
   useEffect(() => {
     if (faseMision === 'PREPARACION') {
-      const nuevaVariacionMils = calcularVariacionWMM(inputs.mx, inputs.my);
+      // AQUÍ ESTABA LA MAGIA: Pasamos inputs.zona a la función
+      const nuevaVariacionMils = calcularVariacionWMM(inputs.mx, inputs.my, inputs.zona);
       setRes((prev: any) => ({
         ...prev,
         variacion: nuevaVariacionMils
       }));
     }
-  }, [inputs.mx, inputs.my, faseMision]);
+  }, [inputs.mx, inputs.my, inputs.zona, faseMision]); // Agregamos inputs.zona a dependencias
 
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
@@ -286,7 +296,8 @@ export function Calculadora() {
       snapshot: {
         tx: inputs.tx, ty: inputs.ty,
         ox: inputs.ox, oy: inputs.oy,
-        usarVariacion: inputs.usarVariacion
+        usarVariacion: inputs.usarVariacion,
+        zona: inputs.zona // <--- Guardamos la zona en el historial
       },
       fullData: dataOverride ? dataOverride : {
         inputs: { ...inputs },
@@ -437,10 +448,12 @@ export function Calculadora() {
 
         <div className="main-split-layout">
           <div className="left-zone">
+            {/* PASAMOS ZONA AL MAPA */}
             <TacticalMap
               mx={inputs.mx} my={inputs.my}
               tx={inputs.tx} ty={inputs.ty}
               ox={inputs.ox} oy={inputs.oy}
+              zona={inputs.zona} // <--- ¡AQUÍ ESTÁ EL CAMBIO CLAVE PARA EL MAPA!
               historial={historial}
               orientacion_base={inputs.orientacion_base}
               rangoCarga={{ min: res.rango_min, max: res.rango_max }}

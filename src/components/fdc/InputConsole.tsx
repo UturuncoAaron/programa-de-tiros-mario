@@ -6,7 +6,7 @@ interface InputConsoleProps {
     variacion: number;
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
     faseBloqueada: boolean;
-    bloquearVariacion?: boolean; // Nueva propiedad opcional
+    bloquearVariacion?: boolean;
 }
 
 export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquearVariacion = false }: InputConsoleProps) {
@@ -20,10 +20,9 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
 
     const estiloBloqueado = { opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#1a1a1a' };
 
-    // Estilo especial para la variación congelada
     const estiloVarBloqueada = bloquearVariacion ? {
         opacity: 0.5,
-        pointerEvents: 'none' as 'none',
+        pointerEvents: 'none' as const, // Corregido para TypeScript
         filter: 'grayscale(100%)'
     } : {};
 
@@ -33,9 +32,39 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                 <div className="card-header text-green">1. POSICIONES</div>
                 <div className="card-body vertical-stack">
 
-                    {/* GRUPO MORTERO */}
+                    {/* GRUPO MORTERO CON SELECTOR DE ZONA */}
                     <div className="group-box">
-                        <label className="group-label">MORTERO (PROPIA TROPA)</label>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                            <label className="group-label" style={{ margin: 0 }}>MORTERO (PROPIA TROPA)</label>
+
+                            {/* --- SELECTOR DE ZONA TÁCTICO --- */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#002200', padding: '2px 6px', borderRadius: '4px', border: '1px solid #0f0' }}>
+                                <span style={{ color: '#0f0', fontSize: '0.6rem', fontWeight: 'bold' }}>ZONA:</span>
+                                <select
+                                    id="zona"
+                                    value={data.zona || 18}
+                                    onChange={onChange}
+                                    disabled={faseBloqueada}
+                                    style={{
+                                        background: 'transparent',
+                                        color: '#fff',
+                                        border: 'none',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 'bold',
+                                        cursor: faseBloqueada ? 'not-allowed' : 'pointer',
+                                        outline: 'none',
+                                        appearance: 'none',
+                                        textAlign: 'right'
+                                    }}
+                                >
+                                    {/* CAMBIO: Quitamos la 'L' para que sirva para M, L y K */}
+                                    <option value="17" style={{ background: '#000' }}>ZONA 17 (Oeste)</option>
+                                    <option value="18" style={{ background: '#000' }}>ZONA 18 (Centro)</option>
+                                    <option value="19" style={{ background: '#000' }}>ZONA 19 (Este)</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div className="input-row-3">
                             <div className="tiny-field">
                                 <label>ESTE (X)</label>
@@ -105,7 +134,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                     </div>
 
                     <div className="group-box" style={{ marginTop: '10px' }}>
-                        <label className="group-label">DATOS POLARES (OBS &rarr; OBJ)</label>
+                        <label className="group-label">DATOS POLARES </label>
                         <div className="input-row-2" style={{ gap: '10px' }}>
                             <div className="tiny-field" style={{ flex: 1.5 }}>
                                 <label>AZIMUT</label>
@@ -126,7 +155,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                                 </div>
                             </div>
                             <div className="tiny-field" style={{ flex: 1 }}>
-                                <label>DISTANCIA (mts)</label>
+                                <label>DISTANCIA</label>
                                 <input type="number" id="distObs" value={data.distObs || ''} onChange={onChange} />
                             </div>
                         </div>
@@ -234,7 +263,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                             />
                         </div>
 
-                        {/* CONTENEDOR DE VARIACIÓN (SE BLOQUEA VISUALMENTE SI bloquearVariacion es true) */}
+                        {/* CONTENEDOR DE VARIACIÓN */}
                         <div className="var-container" style={estiloVarBloqueada}>
                             <div className="var-data" style={{ opacity: data.usarVariacion ? 1 : 0.5 }}>
                                 <label>VAR MAG</label>

@@ -9,11 +9,12 @@ interface Props {
     map: L.Map;
     mx: number; my: number;
     tx: number; ty: number;
+    zona: number;
     historial: LogTiro[];
     showLabels: boolean;
 }
 
-export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Props) {
+export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels }: Props) {
     const layersRef = useRef<{ impacts?: L.LayerGroup; labels?: L.LayerGroup }>({});
 
     useEffect(() => {
@@ -26,7 +27,7 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
         layersRef.current.labels.clearLayers();
 
         const iconImpacto = getDivIcon(ICONS.IMPACTO, [20, 20], [10, 10]);
-        const targetPos = utmToLatLng(tx, ty, 18, true);
+        const targetPos = utmToLatLng(tx, ty, zona, true);
 
         const deltaY = ty - my; const deltaX = tx - mx;
         const distTiro = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -39,7 +40,9 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
             else { hTx = log.snapshot.tx; hTy = log.snapshot.ty; }
 
             if (hTx > 0 && hTy > 0) {
-                const hPos = utmToLatLng(hTx, hTy, 18, true);
+                const zonaUsar = log.snapshot?.zona || zona;
+                const hPos = utmToLatLng(hTx, hTy, zonaUsar, true);
+                
                 if (!isNaN(hPos[0])) {
                     const errorTac = calcularValoresError(mx, my, tx, ty, hTx, hTy);
                     
@@ -70,7 +73,7 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
                             
                             const vx = tx + errAlcanceScalar * uX;
                             const vy = ty + errAlcanceScalar * uY;
-                            const vPos = utmToLatLng(vx, vy, 18, true);
+                            const vPos = utmToLatLng(vx, vy, zona, true);
 
                             if (!isNaN(vPos[0])) {
                                 L.polyline([hPos, targetPos], { color: '#ff4444', weight: 1.5, dashArray: '4, 4', opacity: 0.6 }).addTo(layersRef.current.labels!);
@@ -103,7 +106,7 @@ export function ImpactsLayer({ map, mx, my, tx, ty, historial, showLabels }: Pro
             if (layersRef.current.impacts) layersRef.current.impacts.clearLayers();
             if (layersRef.current.labels) layersRef.current.labels.clearLayers();
         }
-    }, [map, mx, my, tx, ty, historial, showLabels]);
+    }, [map, mx, my, tx, ty, zona, historial, showLabels]);
 
     return null;
 }

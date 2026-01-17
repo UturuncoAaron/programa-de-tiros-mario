@@ -3,13 +3,11 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { LogTiro } from '../../../views/Calculadora';
 
-// Componentes Hijos
 import { MapControls } from './MapControls';
 import { GridLayer } from './Layers/GridLayer';
 import { MainElements } from './Layers/MainElements';
 import { ImpactsLayer } from './Layers/ImpactsLayer';
 
-// Estilos
 const MAP_STYLES = `
   .error-label-tooltip { background: transparent; border: none; box-shadow: none; font-family: monospace; font-size: 10px; font-weight: bold; }
   .tag-alcance { background: #000; color: #00e5ff; border: 1px solid #00e5ff; padding: 1px 4px; border-radius: 3px; }
@@ -24,6 +22,7 @@ interface TacticalMapProps {
     mx: number; my: number;
     tx: number; ty: number;
     ox: number; oy: number;
+    zona: number;
     historial: LogTiro[];
     orientacion_base: number;
     rangoCarga?: { min: number, max: number };
@@ -52,7 +51,6 @@ export function TacticalMap(props: TacticalMapProps) {
         return () => { mapRef.current?.remove(); mapRef.current = null; setMapReady(false); };
     }, []);
 
-    // 2. Manejo Online/Offline
     useEffect(() => {
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => { setIsOnline(false); setMode('radar'); };
@@ -61,7 +59,6 @@ export function TacticalMap(props: TacticalMapProps) {
         return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
     }, []);
 
-    // 3. Manejo de Capa Satelital
     useEffect(() => {
         if (!mapRef.current || !layersRef.current.tile) return;
         if (mode === 'sat' && isOnline) layersRef.current.tile.addTo(mapRef.current);
@@ -79,21 +76,25 @@ export function TacticalMap(props: TacticalMapProps) {
 
             <div ref={mapContainerRef} style={{ flex: 1, width: '100%', height: '100%' }} />
 
-            {/* Renderizado Condicional de Capas */}
             {mapReady && mapRef.current && (
                 <>
                     {mode === 'radar' && <GridLayer map={mapRef.current} mx={props.mx} my={props.my} />}
                     
                     <MainElements 
                         map={mapRef.current} 
-                        mx={props.mx} my={props.my} tx={props.tx} ty={props.ty} ox={props.ox} oy={props.oy} 
+                        mx={props.mx} my={props.my} 
+                        tx={props.tx} ty={props.ty} 
+                        ox={props.ox} oy={props.oy} 
+                        zona={props.zona}
                         orientacion_base={props.orientacion_base} 
                         rangoCarga={props.rangoCarga} 
                     />
                     
                     <ImpactsLayer 
                         map={mapRef.current} 
-                        mx={props.mx} my={props.my} tx={props.tx} ty={props.ty} 
+                        mx={props.mx} my={props.my} 
+                        tx={props.tx} ty={props.ty} 
+                        zona={props.zona}
                         historial={props.historial} 
                         showLabels={showLabels} 
                     />
