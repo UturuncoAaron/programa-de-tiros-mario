@@ -59,16 +59,12 @@ export const ICONS = {
     </svg>`,
 
     // 4. IMPACTO: Explosión animada
-    IMPACTO: `
-    <svg viewBox="0 0 40 40" width="40" height="40" style="overflow: visible;">
-      <circle cx="20" cy="20" r="15" fill="rgba(255, 170, 0, 0.3)" stroke="none">
-         <animate attributeName="r" values="5;20;5" dur="1.5s" repeatCount="indefinite" />
-         <animate attributeName="opacity" values="0.8;0;0.8" dur="1.5s" repeatCount="indefinite" />
-      </circle>
-      <path d="M20 5 L23 15 L35 12 L28 22 L35 32 L23 28 L20 38 L17 28 L5 32 L12 22 L5 12 L17 15 Z" 
-            fill="#ffcc00" stroke="${COLORS.HOSTILE}" stroke-width="1"/>
-      <circle cx="20" cy="20" r="4" fill="white"/>
-    </svg>`
+    // 4. IMPACTO: Ahora es un punto simple (Marker)
+  IMPACTO: `
+  <svg viewBox="0 0 16 16" width="16" height="16" style="overflow: visible;">
+    <circle cx="8" cy="9" r="4.5" fill="black" opacity="0.6"/>
+    <circle cx="8" cy="8" r="4" fill="${COLORS.IMPACT}" stroke="white" stroke-width="1"/>
+  </svg>`
 };
 
 // Helper para crear íconos rápido con Leaflet

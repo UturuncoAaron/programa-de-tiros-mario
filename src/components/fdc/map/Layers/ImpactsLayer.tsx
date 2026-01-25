@@ -20,15 +20,21 @@ export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels 
     useEffect(() => {
         if (!map) return;
         
+        // Inicializar capas si no existen
         if (!layersRef.current.impacts) layersRef.current.impacts = L.layerGroup().addTo(map);
         if (!layersRef.current.labels) layersRef.current.labels = L.layerGroup().addTo(map);
 
+        // Limpiar antes de redibujar
         layersRef.current.impacts.clearLayers();
         layersRef.current.labels.clearLayers();
 
-        const iconImpacto = getDivIcon(ICONS.IMPACTO, [20, 20], [10, 10]);
+        // --- CAMBIO 1: ICONO MÁS PEQUEÑO Y PRECISO ---
+        // Usamos 16x16 px y ancla en el centro exacto (8,8)
+        const iconImpacto = getDivIcon(ICONS.IMPACTO, [16, 16], [8, 8]);
+        
         const targetPos = utmToLatLng(tx, ty, zona, true);
 
+        // Vectores para cálculos geométricos
         const deltaY = ty - my; const deltaX = tx - mx;
         const distTiro = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         let uX = 0, uY = 0;
@@ -36,6 +42,7 @@ export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels 
 
         historial.forEach((log) => {
             let hTx = 0, hTy = 0;
+            // Recuperar coordenadas reales del impacto
             if (log.fullData && log.fullData.impacto) { hTx = log.fullData.impacto.x; hTy = log.fullData.impacto.y; }
             else { hTx = log.snapshot.tx; hTy = log.snapshot.ty; }
 
@@ -46,25 +53,38 @@ export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels 
                 if (!isNaN(hPos[0])) {
                     const errorTac = calcularValoresError(mx, my, tx, ty, hTx, hTy);
                     
+                    // --- CAMBIO 2: LÓGICA SEMÁNTICA DEL ID ---
+                    // Si es un REGLAJE (ID 2), visualmente es el impacto del TIRO (ID 1)
+                    const numeroVisual = log.tipo === 'REGLAJE' ? (log.id - 1) : log.id;
+                    const tituloPopup = log.tipo === 'REGLAJE' ? `IMPACTO TIRO #${numeroVisual}` : `TIRO DE EFICACIA #${numeroVisual}`;
+
                     const popupContent = `
-                        <div style="text-align:center"><b style="color:#ffb300">TIRO #${log.id}</b><hr style="border:0;border-top:1px solid #444;margin:4px 0">
-                        <div style="display:grid; grid-template-columns: 1fr; gap:2px; text-align:left">
-                        <div>ALCANCE: <span style="color:${errorTac.alcance > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.alcance > 0 ? 'LARGO' : 'CORTO'} ${Math.abs(errorTac.alcance)}m</span></div>
-                        <div>DIRECCIÓN: <span style="color:${errorTac.direccion > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.direccion > 0 ? 'DER' : 'IZQ'} ${Math.abs(errorTac.direccion)}m</span></div></div></div>`;
+                        <div style="text-align:center">
+                            <b style="color:#ffb300">${tituloPopup}</b>
+                            <hr style="border:0;border-top:1px solid #444;margin:4px 0">
+                            <div style="display:grid; grid-template-columns: 1fr; gap:2px; text-align:left">
+                                <div>ALCANCE: <span style="color:${errorTac.alcance > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.alcance > 0 ? 'LARGO' : 'CORTO'} ${Math.abs(errorTac.alcance)}m</span></div>
+                                <div>DIRECCIÓN: <span style="color:${errorTac.direccion > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.direccion > 0 ? 'DER' : 'IZQ'} ${Math.abs(errorTac.direccion)}m</span></div>
+                            </div>
+                            <div style="margin-top:5px; font-size:9px; color:#666">GRID: ${hTx} / ${hTy}</div>
+                        </div>`;
                     
+                    // Círculo de radio de dispersión (opcional, lo hice más sutil)
                     L.circle(hPos, {
-                        radius: 25,
+                        radius: 15, // Reduje el radio para que sea más limpio
                         color: '#ff3300',
                         fillColor: '#ff3300',
-                        fillOpacity: 0.3,
-                        weight: 1,
-                        dashArray: '3, 3'
+                        fillOpacity: 0.1, // Más transparente
+                        weight: 0.5,
+                        dashArray: '2, 2'
                     }).addTo(layersRef.current.impacts!);
 
+                    // --- DIBUJAR EL PUNTO DE IMPACTO ---
                     L.marker(hPos, { icon: iconImpacto })
                         .bindPopup(popupContent, { className: 'popup-tactico' })
                         .addTo(layersRef.current.impacts!);
 
+                    // --- DIBUJAR VECTORES DE ERROR (Solo si showLabels está activo) ---
                     if (showLabels && targetPos && !isNaN(targetPos[0])) {
                         const distErrorTotal = Math.sqrt(Math.pow(hTx - tx, 2) + Math.pow(hTy - ty, 2));
                         
@@ -76,7 +96,10 @@ export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels 
                             const vPos = utmToLatLng(vx, vy, zona, true);
 
                             if (!isNaN(vPos[0])) {
-                                L.polyline([hPos, targetPos], { color: '#ff4444', weight: 1.5, dashArray: '4, 4', opacity: 0.6 }).addTo(layersRef.current.labels!);
+                                // Línea punteada del Objetivo al Impacto (Visualización rápida)
+                                L.polyline([hPos, targetPos], { color: '#ff4444', weight: 1, dashArray: '4, 4', opacity: 0.5 }).addTo(layersRef.current.labels!);
+                                
+                                // Componentes vectoriales (Alcance / Dirección)
                                 L.polyline([targetPos, vPos], { color: '#00e5ff', weight: 1.5, opacity: 0.8 }).addTo(layersRef.current.labels!);
                                 L.polyline([vPos, hPos], { color: '#ffb300', weight: 1.5, opacity: 0.8 }).addTo(layersRef.current.labels!);
 
@@ -84,6 +107,7 @@ export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels 
                                 const midH_V = [(hPos[0] + vPos[0]) / 2, (hPos[1] + vPos[1]) / 2] as L.LatLngExpression;
                                 const midHyp = [(hPos[0] + targetPos[0]) / 2, (hPos[1] + targetPos[1]) / 2] as L.LatLngExpression;
 
+                                // Etiquetas flotantes
                                 L.tooltip({ permanent: true, direction: 'center', className: 'error-label-tooltip', opacity: 1 })
                                     .setContent(`<div class="tag-total">E: ${Math.round(distErrorTotal)}m</div>`)
                                     .setLatLng(midHyp).addTo(layersRef.current.labels!);

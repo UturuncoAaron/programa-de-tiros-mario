@@ -345,27 +345,64 @@ export function Calculadora() {
     let impactoX = 0;
     let impactoY = 0;
 
-    // --- AQUÍ EMPIEZA LA LÓGICA DE APRECIACIÓN ---
+    // --- MODO: APRECIACIÓN (CORREGIDO FINAL) ---
     if (reglaje.metodo === 'apreciacion') {
 
-      // 1. CÁLCULO DE DIRECCIÓN (Deriva)
-      const valorDir = reglaje.val_dir; // Toma el valor del input (ej. 50 metros)
-      if (reglaje.dir === 'right') deltaAz = valorDir;      // Si es Derecha, SUMA a la deriva (o al azimut dependiendo de tu sistema)
-      else deltaAz = -valorDir;                             // Si es Izquierda, RESTA
+      // 1. OBTENER DATOS BASE (USANDO LOS NOMBRES REALES DE TU STATE)
+      // Aquí estaba el error: tus variables se llaman 'azObs' y 'distObs'
+      const azBaseOA = Number(inputs.azObs || 0);
+      const distBaseOA = Number(inputs.distObs || 0);
 
-      // 2. CÁLCULO DE ALCANCE (La "Horquilla")
-      const valorRango = reglaje.val_rango; // Toma el valor del input (ej. 400, 200, 100)
+      // 2. PREPARAR LA MATEMÁTICA
+      const valorDir = Math.abs(Number(reglaje.val_dir || 0));
+      const valorRango = Math.abs(Number(reglaje.val_rango || 0));
 
-      // Aquí decide si suma o resta metros a la distancia total
-      if (reglaje.rango === 'add') deltaDist = valorRango;  // "LARGO (+)" -> Suma distancia
-      else deltaDist = -valorRango;                         // "CORTO (-)" -> Resta distancia
+      const signoDir = reglaje.dir === 'left' ? -1 : 1;      // Izq (-) / Der (+)
+      const signoRango = reglaje.rango === 'add' ? 1 : -1;   // Largo (+) / Corto (-)
 
-      detalleLog = `APR: ${reglaje.dir === 'right' ? 'Der' : 'Izq'} ${valorDir}, ${reglaje.rango === 'add' ? '+' : '-'}${valorRango}`;
+      // 3. CALCULAR LOS NUEVOS DATOS POLARES
+      // Nota: Si quieres que sea acumulativo respecto a correcciones anteriores,
+      // deberías sumar aquí también correcciones previas, pero para empezar
+      // vamos a basarnos en el último dato del O.A.
+      const nuevoAzOA = azBaseOA + (valorDir * signoDir);
+      const nuevaDistOA = distBaseOA + (valorRango * signoRango);
+
+      // 4. GEOMETRÍA INVERSA (Convertir Polar a Grid)
+      // Convertimos el azimut del OA a radianes
+      // OJO: Verificamos si tu input es en MILS o GRADOS
+      let azRad = 0;
+      if (inputs.azObsUnit === 'deg') {
+        azRad = nuevoAzOA * (Math.PI / 180);
+      } else {
+        azRad = nuevoAzOA * (Math.PI * 2 / 6400); // Por defecto MILS
+      }
+
+      // Proyectamos desde la posición del O.A. (ox, oy)
+      const bx = Number(inputs.ox) + nuevaDistOA * Math.sin(azRad);
+      const by = Number(inputs.oy) + nuevaDistOA * Math.cos(azRad);
+
+      impactoX = Math.round(bx);
+      impactoY = Math.round(by);
+
+      // 5. CALCULAR SOLUCIÓN DE TIRO (Mortero -> Nuevo Punto)
+      const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
+
+      if (geoEstallido && datosCongelados) {
+        // Calculamos la diferencia entre la BASE CONGELADA (Tiro inicial) y el NUEVO PUNTO
+        let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+
+        // Normalización de ángulos
+        if (diffAz > 3200) diffAz -= 6400;
+        if (diffAz < -3200) diffAz += 6400;
+
+        deltaAz = diffAz;
+        deltaDist = datosCongelados.distBase - geoEstallido.dist;
+      }
+
+      // 6. LOG TÁCTICO
+      detalleLog = `APR: ${reglaje.dir === 'left' ? 'Izq' : 'Der'} ${valorDir}, ${reglaje.rango === 'add' ? 'Largo' : 'Corto'} ${valorRango} -> (Nuevos OA: ${nuevoAzOA}, ${nuevaDistOA})`;
     }
-    // --- FIN LÓGICA APRECIACIÓN ---
-
     else {
-      // Lógica de MEDICIÓN (Grid/Polar)
       if (!datosCongelados) return;
       if (reglaje.imp_dist === 0) return;
 
@@ -397,14 +434,15 @@ export function Calculadora() {
       detalleLog = `MED: Estallido a ${Math.round(geoEstallido.dist)}m (Az ${Math.round(geoEstallido.azMils)})`;
     }
 
-    // --- APLICACIÓN FINAL DE LA CORRECCIÓN ---
-    const nuevoAz = correccionAcumulada.az + deltaAz;     // Acumula el error de dirección
-    const nuevoDist = correccionAcumulada.dist + deltaDist; // Acumula el error de distancia
+    // --- APLICACIÓN FINAL ---
+    const nuevoAz = correccionAcumulada.az + deltaAz;
+    const nuevoDist = correccionAcumulada.dist + deltaDist;
 
-    // Guardamos en el estado para el siguiente tiro
     setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
 
-    // Preparamos los datos para guardar en el historial (Log)
+    // AQUÍ ES DONDE SE MUESTRAN LOS DATOS QUE TÚ QUIERES VER
+    // Si tenías 1324 y sumaste 376, 'distancia' valdrá 1700.
+
     const logResultOverride = {
       ...res,
       distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
@@ -419,12 +457,10 @@ export function Calculadora() {
       extraData.impacto = { x: impactoX, y: impactoY };
     }
 
-    guardarLog('REGLAJE', detalleLog, `Solución: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`, extraData);
+    guardarLog('REGLAJE', detalleLog, `Sol: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`, extraData);
 
-    // Reseteamos los inputs del panel de corrección
     setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
   };
-
   return (
     <div className="laptop-bezel" style={{ width: '100%', height: '100%', border: 'none' }}>
       <div className="screen-container">
