@@ -242,33 +242,72 @@ export function Calculadora() {
       temp_carga: inputs.temp_carga, bloqueo: inputs.bloqueoMeteo
     };
 
-    const granada = ARSENAL[inputs.tipoGranada];
+  const granada = ARSENAL[inputs.tipoGranada];
     const cargasPosibles: string[] = [];
+    
+    // Lista de candidatos con sus estadísticas
+    let candidatos: { id: string, uso: number, buffer: number }[] = [];
+    
     let cargaRecomendada = '-';
-    let mejorBuffer = -1;
     let rMin = 0, rMax = 0;
 
     if (granada) {
+      // 1. ANALIZAR TODAS LAS CARGAS POSIBLES
       for (const cStr in granada.rangos) {
         const r = granada.rangos[parseInt(cStr)];
+        
+        // Solo nos interesan las que llegan
         if (distCalculo >= r.min && distCalculo <= r.max) {
           cargasPosibles.push(cStr);
+          
+          // Calculamos estadísticas tácticas:
+          // USO: ¿Qué porcentaje del tubo estoy usando? (Ej: 0.90 es 90%, muy forzado)
+          const uso = distCalculo / r.max; 
+          
+          // BUFFER: ¿Cuántos metros me sobran para alargar?
           const buffer = r.max - distCalculo;
-          if (cargaRecomendada === '-' || (mejorBuffer < 200 && buffer > mejorBuffer)) {
-            cargaRecomendada = cStr; mejorBuffer = buffer;
-          }
+
+          candidatos.push({ id: cStr, uso, buffer });
         }
+      }
+
+      // 2. SELECCIÓN INTELIGENTE (TU CRITERIO DEL 60% / 800m)
+      if (candidatos.length > 0) {
+        // Ordenamos los candidatos buscando el MEJOR EQUILIBRIO.
+        candidatos.sort((a, b) => {
+          
+          // CRITERIO A: Prioridad absoluta a tener al menos 800m de buffer
+          const aTieneBuffer = a.buffer >= 800;
+          const bTieneBuffer = b.buffer >= 800;
+
+          if (aTieneBuffer && !bTieneBuffer) return -1; // Gana A
+          if (!aTieneBuffer && bTieneBuffer) return 1;  // Gana B
+
+          // CRITERIO B: Si ambos tienen (o no tienen) buffer, buscamos el que esté más cerca del 60-70% de uso.
+          // El "Punto Dulce" ideal es 0.65 (65% de la capacidad)
+          const diffA = Math.abs(a.uso - 0.65);
+          const diffB = Math.abs(b.uso - 0.65);
+
+          return diffA - diffB; // El que tenga menor diferencia con 0.65 gana
+        });
+
+        // El primer elemento después de ordenar es el tácticamente ideal
+        cargaRecomendada = candidatos[0].id;
       }
     }
 
+    // 3. RESPETAR SELECCIÓN MANUAL
     const cargaFinal = (inputs.carga_seleccionada !== '-' && cargasPosibles.includes(inputs.carga_seleccionada))
-      ? inputs.carga_seleccionada : cargaRecomendada;
+      ? inputs.carga_seleccionada 
+      : cargaRecomendada;
 
-    if (granada && granada.rangos[parseInt(cargaFinal)]) {
+    // 4. ACTUALIZAR LÍMITES
+    if (granada && cargaFinal !== '-' && granada.rangos[parseInt(cargaFinal)]) {
       rMin = granada.rangos[parseInt(cargaFinal)].min;
       rMax = granada.rangos[parseInt(cargaFinal)].max;
     }
 
+    // 5. CALCULAR SOLUCIÓN
     const solucion = calcularBalistica(distCalculo, inputs.tipoGranada, cargaFinal, dataMeteo, 0);
 
     setRes((prev: any) => ({
@@ -385,13 +424,13 @@ export function Calculadora() {
       impactoY = Math.round(by);
 
       // 5. CALCULAR SOLUCIÓN DE TIRO (Mortero -> Nuevo Punto)
+      // ... (todo el código de cálculo matemático anterior sigue igual) ...
+
+      // 5. CALCULAR SOLUCIÓN DE TIRO
       const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
 
       if (geoEstallido && datosCongelados) {
-        // Calculamos la diferencia entre la BASE CONGELADA (Tiro inicial) y el NUEVO PUNTO
         let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-
-        // Normalización de ángulos
         if (diffAz > 3200) diffAz -= 6400;
         if (diffAz < -3200) diffAz += 6400;
 
@@ -401,141 +440,149 @@ export function Calculadora() {
 
       // 6. LOG TÁCTICO
       detalleLog = `APR: ${reglaje.dir === 'left' ? 'Izq' : 'Der'} ${valorDir}, ${reglaje.rango === 'add' ? 'Largo' : 'Corto'} ${valorRango} -> (Nuevos OA: ${nuevoAzOA}, ${nuevaDistOA})`;
-    }
+
+      // --- AQUÍ ESTÁ LA CLAVE DE TU PAPÁ ---
+      // NO agregues el setInputs que te pasé antes.
+      // Al no actualizar, la próxima vez que corrijas, el sistema volverá a leer '1468' (el primer azimut).
+      // Solo recuerda limpiar los campos de corrección para que no te confundas.
+
+      setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0 }));
+    
+  }
     else {
-      if (!datosCongelados) return;
-      if (reglaje.imp_dist === 0) return;
+    if (!datosCongelados) return;
+    if (reglaje.imp_dist === 0) return;
 
-      let azObsRad = 0;
-      if (reglaje.imp_unit === 'mils') {
-        azObsRad = reglaje.imp_az * (Math.PI * 2 / 6400);
-      } else {
-        azObsRad = reglaje.imp_az * (Math.PI / 180);
-      }
-
-      const bx = inputs.ox + reglaje.imp_dist * Math.sin(azObsRad);
-      const by = inputs.oy + reglaje.imp_dist * Math.cos(azObsRad);
-
-      impactoX = Math.round(bx);
-      impactoY = Math.round(by);
-
-      const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
-      if (!geoEstallido) return;
-
-      let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-      if (diffAz > 3200) diffAz -= 6400;
-      if (diffAz < -3200) diffAz += 6400;
-
-      const diffDist = datosCongelados.distBase - geoEstallido.dist;
-
-      deltaAz = diffAz;
-      deltaDist = diffDist;
-
-      detalleLog = `MED: Estallido a ${Math.round(geoEstallido.dist)}m (Az ${Math.round(geoEstallido.azMils)})`;
+    let azObsRad = 0;
+    if (reglaje.imp_unit === 'mils') {
+      azObsRad = reglaje.imp_az * (Math.PI * 2 / 6400);
+    } else {
+      azObsRad = reglaje.imp_az * (Math.PI / 180);
     }
 
-    // --- APLICACIÓN FINAL ---
-    const nuevoAz = correccionAcumulada.az + deltaAz;
-    const nuevoDist = correccionAcumulada.dist + deltaDist;
+    const bx = inputs.ox + reglaje.imp_dist * Math.sin(azObsRad);
+    const by = inputs.oy + reglaje.imp_dist * Math.cos(azObsRad);
 
-    setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
+    impactoX = Math.round(bx);
+    impactoY = Math.round(by);
 
-    // AQUÍ ES DONDE SE MUESTRAN LOS DATOS QUE TÚ QUIERES VER
-    // Si tenías 1324 y sumaste 376, 'distancia' valdrá 1700.
+    const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
+    if (!geoEstallido) return;
 
-    const logResultOverride = {
-      ...res,
-      distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
-      cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-'
-    };
+    let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+    if (diffAz > 3200) diffAz -= 6400;
+    if (diffAz < -3200) diffAz += 6400;
 
-    const extraData: any = {
-      inputs: { ...inputs },
-      results: logResultOverride
-    };
-    if (impactoX > 0 && impactoY > 0) {
-      extraData.impacto = { x: impactoX, y: impactoY };
-    }
+    const diffDist = datosCongelados.distBase - geoEstallido.dist;
 
-    guardarLog('REGLAJE', detalleLog, `Sol: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`, extraData);
+    deltaAz = diffAz;
+    deltaDist = diffDist;
 
-    setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
+    detalleLog = `MED: Estallido a ${Math.round(geoEstallido.dist)}m (Az ${Math.round(geoEstallido.azMils)})`;
+  }
+
+  // --- APLICACIÓN FINAL ---
+  const nuevoAz = correccionAcumulada.az + deltaAz;
+  const nuevoDist = correccionAcumulada.dist + deltaDist;
+
+  setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
+
+  // AQUÍ ES DONDE SE MUESTRAN LOS DATOS QUE TÚ QUIERES VER
+  // Si tenías 1324 y sumaste 376, 'distancia' valdrá 1700.
+
+  const logResultOverride = {
+    ...res,
+    distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
+    cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-'
   };
-  return (
-    <div className="laptop-bezel" style={{ width: '100%', height: '100%', border: 'none' }}>
-      <div className="screen-container">
-        <header className="screen-header">
-          <div className="header-left">
-            <div className={`status-led ${faseMision === 'FUEGO' ? 'busy' : 'online'}`}></div>
-            <h1>MORTEROS-MARIA // CALCULADORA {faseMision === 'FUEGO' && <span className="text-blink">[EN MISIÓN]</span>}</h1>
-          </div>
-          <div className="header-right">
-            <button
-              onClick={handleNuevaMision}
-              className="btn-reset-mision"
-              style={{ backgroundColor: '#330000', color: '#ff4444', border: '1px solid #ff4444', padding: '4px 10px', fontSize: '0.7rem', marginRight: '15px', cursor: 'pointer', fontFamily: 'monospace' }}
+
+  const extraData: any = {
+    inputs: { ...inputs },
+    results: logResultOverride
+  };
+  if (impactoX > 0 && impactoY > 0) {
+    extraData.impacto = { x: impactoX, y: impactoY };
+  }
+
+  guardarLog('REGLAJE', detalleLog, `Sol: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`, extraData);
+
+  setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
+};
+return (
+  <div className="laptop-bezel" style={{ width: '100%', height: '100%', border: 'none' }}>
+    <div className="screen-container">
+      <header className="screen-header">
+        <div className="header-left">
+          <div className={`status-led ${faseMision === 'FUEGO' ? 'busy' : 'online'}`}></div>
+          <h1>MORTEROS-MARIA // CALCULADORA {faseMision === 'FUEGO' && <span className="text-blink">[EN MISIÓN]</span>}</h1>
+        </div>
+        <div className="header-right">
+          <button
+            onClick={handleNuevaMision}
+            className="btn-reset-mision"
+            style={{ backgroundColor: '#330000', color: '#ff4444', border: '1px solid #ff4444', padding: '4px 10px', fontSize: '0.7rem', marginRight: '15px', cursor: 'pointer', fontFamily: 'monospace' }}
+          >
+            [ X ] FIN MISIÓN
+          </button>
+          <div className="mini-control">
+            <label>MUNICIÓN</label>
+            <select
+              id="tipoGranada"
+              value={inputs.tipoGranada}
+              onChange={handleChange}
+              style={{ maxWidth: '180px', pointerEvents: 'auto' }}
             >
-              [ X ] FIN MISIÓN
-            </button>
-            <div className="mini-control">
-              <label>MUNICIÓN</label>
-              <select
-                id="tipoGranada"
-                value={inputs.tipoGranada}
-                onChange={handleChange}
-                style={{ maxWidth: '180px', pointerEvents: 'auto' }}
-              >
-                {Object.entries(ARSENAL).map(([id, datos]) => (
-                  <option key={id} value={id}>
-                    {datos.descripcion.length > 20 ? datos.descripcion : `${id} - ${datos.descripcion}`}
-                  </option>
-                ))}
-              </select>
-            </div>
+              {Object.entries(ARSENAL).map(([id, datos]) => (
+                <option key={id} value={id}>
+                  {datos.descripcion.length > 20 ? datos.descripcion : `${id} - ${datos.descripcion}`}
+                </option>
+              ))}
+            </select>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="main-split-layout">
-          <div className="left-zone">
-            {/* PASAMOS ZONA AL MAPA */}
-            <TacticalMap
-              mx={inputs.mx} my={inputs.my}
-              tx={inputs.tx} ty={inputs.ty}
-              ox={inputs.ox} oy={inputs.oy}
-              zona={inputs.zona} // <--- ¡AQUÍ ESTÁ EL CAMBIO CLAVE PARA EL MAPA!
-              historial={historial}
-              orientacion_base={inputs.orientacion_base}
-              rangoCarga={{ min: res.rango_min, max: res.rango_max }}
-            />
-            <InputConsole
-              data={inputs}
-              variacion={res.variacion}
-              onChange={handleChange}
-              faseBloqueada={false}
-              bloquearVariacion={faseMision === 'FUEGO'}
-            />
-          </div>
+      <div className="main-split-layout">
+        <div className="left-zone">
+          {/* PASAMOS ZONA AL MAPA */}
+          <TacticalMap
+            mx={inputs.mx} my={inputs.my}
+            tx={inputs.tx} ty={inputs.ty}
+            ox={inputs.ox} oy={inputs.oy}
+            zona={inputs.zona} // <--- ¡AQUÍ ESTÁ EL CAMBIO CLAVE PARA EL MAPA!
+            historial={historial}
+            orientacion_base={inputs.orientacion_base}
+            rangoCarga={{ min: res.rango_min, max: res.rango_max }}
+          />
+          <InputConsole
+            data={inputs}
+            variacion={res.variacion}
+            onChange={handleChange}
+            faseBloqueada={false}
+            bloquearVariacion={faseMision === 'FUEGO'}
+          />
+        </div>
 
-          <div className="right-sidebar">
-            <SolutionDisplay
-              res={res}
-              inputs={inputs}
-              onChange={handleChange}
-              onFire={handleEjecutarTiro}
-              missionActive={isFiring}
-              faseMision={faseMision}
-            />
-            <MissionLog
-              logs={historial}
-              onRestore={restaurarEstado}
-              onDelete={eliminarLog}
-            />
-            <CorrectionPanel
-              reglaje={reglaje} onChange={handleReglaje} onApply={aplicarCorreccion}
-            />
-          </div>
+        <div className="right-sidebar">
+          <SolutionDisplay
+            res={res}
+            inputs={inputs}
+            onChange={handleChange}
+            onFire={handleEjecutarTiro}
+            missionActive={isFiring}
+            faseMision={faseMision}
+          />
+          <MissionLog
+            logs={historial}
+            onRestore={restaurarEstado}
+            onDelete={eliminarLog}
+          />
+          <CorrectionPanel
+            reglaje={reglaje} onChange={handleReglaje} onApply={aplicarCorreccion}
+          />
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }

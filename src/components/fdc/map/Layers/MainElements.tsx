@@ -24,7 +24,7 @@ export function MainElements({ map, mx, my, tx, ty, ox, oy, zona, orientacion_ba
         if (!layersRef.current.rangeRings) layersRef.current.rangeRings = L.layerGroup().addTo(map);
         
         try {
-            const esSur = true;
+            const esSur = true; // Asumimos hemisferio sur para Perú
             if (!mx || !my || !tx || !ty) return;
             
             const mPos = utmToLatLng(mx, my, zona, esSur);
@@ -32,16 +32,23 @@ export function MainElements({ map, mx, my, tx, ty, ox, oy, zona, orientacion_ba
             
             if (isNaN(mPos[0]) || isNaN(tPos[0])) return;
 
-            const iconMortero = getDivIcon(ICONS.MORTERO, [50, 50], [25, 25]);
-            const iconObjetivo = getDivIcon(ICONS.OBJETIVO, [60, 60], [30, 30]);
-            const iconObservador = getDivIcon(ICONS.OBSERVADOR, [40, 40], [20, 20]);
+            // --- CORRECCIÓN AQUÍ ---
+            // 1. Eliminamos el 3er argumento (el ancla ya es automática).
+            // 2. Ajustamos los tamaños a algo más "táctico" (24px - 32px) para que no se vean gigantes.
+            
+            const iconMortero = getDivIcon(ICONS.MORTERO, [24, 24]);     // Antes [50, 50]
+            const iconObjetivo = getDivIcon(ICONS.OBJETIVO, [24, 24]);   // Antes [60, 60]
+            const iconObservador = getDivIcon(ICONS.OBSERVADOR, [24, 24]); // Antes [40, 40]
 
+            // Dibujar Mortero
             if (!markersRef.current.m) markersRef.current.m = L.marker(mPos, { icon: iconMortero, zIndexOffset: 1000 }).addTo(map);
             else markersRef.current.m.setLatLng(mPos).setIcon(iconMortero);
 
+            // Dibujar Objetivo
             if (!markersRef.current.t) markersRef.current.t = L.marker(tPos, { icon: iconObjetivo, zIndexOffset: 900 }).addTo(map);
             else markersRef.current.t.setLatLng(tPos).setIcon(iconObjetivo);
 
+            // Dibujar Observador (si existe)
             if (ox > 0 && oy > 0) {
                 const oPos = utmToLatLng(ox, oy, zona, esSur);
                 if (!isNaN(oPos[0])) {
@@ -50,9 +57,11 @@ export function MainElements({ map, mx, my, tx, ty, ox, oy, zona, orientacion_ba
                 }
             }
 
+            // Línea Mortero -> Objetivo
             if (!markersRef.current.line) markersRef.current.line = L.polyline([mPos, tPos], { color: '#00ffcc', dashArray: '8, 8', weight: 1, opacity: 0.8 }).addTo(map);
             else markersRef.current.line.setLatLngs([mPos, tPos]);
 
+            // Línea de Orientación Base (Línea amarilla infinita)
             const angleDeg = (orientacion_base * 360) / 6400;
             const lengthMeters = 5000; 
             const rad = angleDeg * (Math.PI / 180);
@@ -66,6 +75,7 @@ export function MainElements({ map, mx, my, tx, ty, ox, oy, zona, orientacion_ba
                 layersRef.current.orientationLine.setTooltipContent(`AZ BASE: ${orientacion_base}`);
             }
 
+            // Anillos de Rango (Min/Max de la carga)
             if (layersRef.current.rangeRings) {
                 layersRef.current.rangeRings.clearLayers();
                 if (rangoCarga && rangoCarga.max > 0) {
@@ -74,6 +84,7 @@ export function MainElements({ map, mx, my, tx, ty, ox, oy, zona, orientacion_ba
                 }
             }
 
+            // Centrar mapa al inicio
             if (!hasCenteredRef.current && mPos[0] !== 0 && tPos[0] !== 0) {
                 const bounds = L.latLngBounds([mPos, tPos]);
                 if (ox > 0) bounds.extend(utmToLatLng(ox, oy, zona, esSur));
