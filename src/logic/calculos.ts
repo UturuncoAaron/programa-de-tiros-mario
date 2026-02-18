@@ -94,3 +94,54 @@ export function utmToLatLng(x: number, y: number, zone: number, southHemi: boole
     const lon = ((zone * 6 - 183) * (Math.PI / 180) + (Q5 - Q6 + Q7) / Math.cos(fpLat)) * (180 / Math.PI);
     return [lat, lon];
 }
+export function dmsToDecimal(grados: number, minutos: number, segundos: number, sur: boolean = true): number {
+    const val = Math.abs(grados) + (minutos / 60) + (segundos / 3600);
+    return sur ? -val : val; // Si es Sur u Oeste, devuelve negativo
+}
+
+// Convierte Latitud/Longitud a UTM (WGS84)
+export function latLonToUtm(lat: number, lon: number, zone: number) {
+    const a = 6378137.0;       // Eje mayor
+    const f = 1 / 298.257223563;
+    const k0 = 0.9996;         // Factor de escala
+    const e = Math.sqrt(f * (2 - f));
+
+    const latRad = lat * (Math.PI / 180);
+    const lonRad = lon * (Math.PI / 180);
+    
+    // Meridiano central de la zona UTM
+    // Zona 18 = -75 grados. Fórmula: (Zona * 6) - 183
+    const meridian = (zone * 6 - 183) * (Math.PI / 180);
+    
+    const N = a / Math.sqrt(1 - Math.pow(e * Math.sin(latRad), 2));
+    const T = Math.pow(Math.tan(latRad), 2);
+    const C = (Math.pow(e, 2) / (1 - Math.pow(e, 2))) * Math.pow(Math.cos(latRad), 2);
+    const A = (lonRad - meridian) * Math.cos(latRad);
+
+    // Expansión de serie para M (Arco de meridiano)
+    const M = a * ((1 - Math.pow(e, 2) / 4 - 3 * Math.pow(e, 4) / 64 - 5 * Math.pow(e, 6) / 256) * latRad
+        - (3 * Math.pow(e, 2) / 8 + 3 * Math.pow(e, 4) / 32 + 45 * Math.pow(e, 6) / 1024) * Math.sin(2 * latRad)
+        + (15 * Math.pow(e, 4) / 256 + 45 * Math.pow(e, 6) / 1024) * Math.sin(4 * latRad)
+        - (35 * Math.pow(e, 6) / 3072) * Math.sin(6 * latRad));
+
+    const easting = (k0 * N * (A + (1 - T + C) * Math.pow(A, 3) / 6
+        + (5 - 18 * T + T * T + 72 * C - 58 * Math.pow(e, 2)) * Math.pow(A, 5) / 120)) + 500000;
+
+    let northing = k0 * (M + N * Math.tan(latRad) * (Math.pow(A, 2) / 2
+        + (5 - T + 9 * C + 4 * C * C) * Math.pow(A, 4) / 24
+        + (61 - 58 * T + T * T + 600 * C - 330 * Math.pow(e, 2)) * Math.pow(A, 6) / 720));
+
+    // Corrección Hemisferio Sur (Perú está en el Sur)
+    if (lat < 0) {
+        northing += 10000000;
+    }
+
+    return { x: Math.round(easting), y: Math.round(northing) };
+}
+export function decimalToDms(deg: number): string {
+    const d = Math.abs(deg);
+    const degrees = Math.floor(d);
+    const minutes = Math.floor((d - degrees) * 60);
+    const seconds = ((d - degrees - minutes / 60) * 3600).toFixed(2);
+    return `${degrees}° ${minutes}' ${seconds}"`;
+}

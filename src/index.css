@@ -244,16 +244,15 @@ body {
   grid-template-columns: 1fr 1fr 1.3fr;
   gap: 10px;
   padding: 10px;
-  overflow-y: auto;
+  overflow-y: hidden; 
 }
-
 .input-card {
   background: #111;
   border: 1px solid #222;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border-radius: 4px;
+  overflow: hidden;
 }
 .input-card.wide-card { background: #121212; }
 
@@ -266,7 +265,16 @@ body {
   letter-spacing: 1px;
 }
 
-.card-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.card-body { 
+  padding: 10px; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px; 
+  overflow-y: auto;
+  max-height: 230px;
+  scrollbar-width: thin;
+  scrollbar-color: #333 #000;
+}
 .vertical-stack { gap: 10px; }
 .tight-gap { gap: 5px; }
 

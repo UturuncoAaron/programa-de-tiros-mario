@@ -4,6 +4,8 @@ import { Calculadora } from './views/Calculadora';
 import { Registros } from './views/Registros';
 import './index.css';
 import { Tablas } from './views/Tablas';
+import { Convertidor } from './views/Convertidor';
+import { Manual } from './views/Manual';
 
 function App() {
   return (
@@ -17,7 +19,8 @@ function App() {
             <Route path="/" element={<Calculadora />} />
             <Route path="/registros" element={<Registros />} />
             <Route path="/tablas" element={<Tablas />} />
-            <Route path="/info" element={<div style={{padding:20, color:'white'}}>SISTEMA MORTEROS-MARIA v1.0</div>} />
+            <Route path="/convertidor" element={<Convertidor />} />
+            <Route path="/manual" element={<Manual />} />
           </Routes>
         </div>
 

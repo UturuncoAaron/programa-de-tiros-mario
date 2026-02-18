@@ -35,10 +35,11 @@ const INITIAL_INPUTS = {
   distObs: 0, azObs: 0, azObsUnit: 'mils',
   tipoGranada: 'W87',
   fecha_tiro: new Date().toISOString().split('T')[0],
+
   meteo_vel: 0, meteo_dir: 0,
   meteo_temp: 15, meteo_pres: 750,
   temp_carga: 15, dif_peso: 0, dif_vel: 0,
-  bloqueoMeteo: true,
+  bloqueoMeteo: false,
   usarVariacion: true,
   orientacion_base: 6400,
   carga_seleccionada: '-',
@@ -80,7 +81,7 @@ export function Calculadora() {
   });
 
   const [isFiring, setIsFiring] = useState(false);
-
+  const [mapId, setMapId] = useState(0);
   const [inputs, setInputs] = useState(() => {
     const savedInputs = localStorage.getItem('mision_inputs');
     return savedInputs ? { ...INITIAL_INPUTS, ...JSON.parse(savedInputs) } : INITIAL_INPUTS;
@@ -139,7 +140,8 @@ export function Calculadora() {
     setInputs(INITIAL_INPUTS);
     setRes(INITIAL_RES);
     setReglaje(INITIAL_REGLAJE);
-    lastGranada.current = INITIAL_INPUTS.tipoGranada;
+        lastGranada.current = INITIAL_INPUTS.tipoGranada;
+    setMapId(prev => prev + 1);
   };
 
   const restaurarEstado = (log: LogTiro) => {
@@ -531,6 +533,7 @@ return (
               value={inputs.tipoGranada}
               onChange={handleChange}
               style={{ maxWidth: '180px', pointerEvents: 'auto' }}
+              disabled={faseMision === 'FUEGO'}
             >
               {Object.entries(ARSENAL).map(([id, datos]) => (
                 <option key={id} value={id}>
@@ -546,6 +549,7 @@ return (
         <div className="left-zone">
           {/* PASAMOS ZONA AL MAPA */}
           <TacticalMap
+            key={mapId}
             mx={inputs.mx} my={inputs.my}
             tx={inputs.tx} ty={inputs.ty}
             ox={inputs.ox} oy={inputs.oy}

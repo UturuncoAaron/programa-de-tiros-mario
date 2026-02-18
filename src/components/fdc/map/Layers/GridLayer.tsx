@@ -37,6 +37,6 @@ export function GridLayer({ map, mx, my }: Props) {
         }
         return () => { map.removeLayer(layerGroup); };
     }, [map, mx, my]);
-
+  
     return null;
 }

@@ -30,11 +30,23 @@ const IconSave = () => (
   </svg>
 );
 
+const IconConvert = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+     <path d="M7 10h14l-4-4m0 8h-14l4 4" />
+  </svg>
+);
+const IconInfo = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" y1="16" x2="12" y2="12"></line>
+    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+  </svg>
+);
 export function Sidebar() {
   const location = useLocation(); 
   const isActive = (path: string) => location.pathname === path ? 'active' : '';
 
-  return (
+ return (
     <div className="sidebar-main">
       <div className="sidebar-logo">M-M</div>
       <nav className="sidebar-nav">
@@ -49,6 +61,14 @@ export function Sidebar() {
         <Link to="/registros" className={`nav-btn ${isActive('/registros')}`}>
             <span className="icon"><IconSave /></span>
             <span className="label">LOGS</span>
+        </Link>
+        <Link to="/convertidor" className={`nav-btn ${isActive('/convertidor')}`}>
+            <span className="icon"><IconConvert /></span>
+            <span className="label">CONV</span>
+        </Link>
+        <Link to="/manual" className={`nav-btn ${isActive('/manual')}`}>
+                    <span className="icon"><IconInfo /></span>
+                    <span className="label">INFO</span>
         </Link>
       </nav>
 
