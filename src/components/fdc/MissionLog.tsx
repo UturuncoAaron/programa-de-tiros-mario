@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { LogTiro } from '../../views/Calculadora';
 
 interface MissionLogProps {
     logs: LogTiro[];
-    onRestore: (log: LogTiro) => void;
     onDelete: (id: number) => void;
+    onEdit: (log: LogTiro) => void; // onEdit ahora es fundamental
 }
 
-export function MissionLog({ logs, onRestore, onDelete }: MissionLogProps) {
+export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
     const [expandedId, setExpandedId] = useState<number | null>(null);
 
     const toggleDetails = (id: number) => {
@@ -96,11 +96,15 @@ export function MissionLog({ logs, onRestore, onDelete }: MissionLogProps) {
 
                                     {/* CONTROLES */}
                                     <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); onRestore(h); }}
-                                            style={{ background: '#111', border: '1px solid #333', color: '#4dff88', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}
-                                            title="Restaurar Datos"
-                                        >↺</button>
+                                        {/* Botón de Edición (Solo para Reglajes) */}
+                                        {h.tipo === 'REGLAJE' && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); onEdit(h); }}
+                                                style={{ background: '#111', border: '1px solid #333', color: '#ffb300', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}
+                                                title="Editar Reglaje"
+                                            >✏️</button>
+                                        )}
+                                        {/* Botón de Eliminar (Para cualquier registro) */}
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); onDelete(h.id); }}
                                             style={{ background: '#111', border: '1px solid #333', color: '#ff4444', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}

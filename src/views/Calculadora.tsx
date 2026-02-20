@@ -7,7 +7,7 @@ import { InputConsole } from '../components/fdc/InputConsole';
 import { SolutionDisplay } from '../components/fdc/SolutionDisplay';
 import { CorrectionPanel } from '../components/fdc/CorrectionPanel';
 import { MissionLog } from '../components/fdc/MissionLog';
-
+import { EditReglajeModal } from '../components/fdc/EditReglajeModal';
 export interface LogTiro {
   id: number;
   hora: string;
@@ -24,6 +24,7 @@ export interface LogTiro {
     inputs: any;
     results: any;
     impacto?: { x: number, y: number };
+    rawReglaje?: any;
   };
 }
 
@@ -35,7 +36,6 @@ const INITIAL_INPUTS = {
   distObs: 0, azObs: 0, azObsUnit: 'mils',
   tipoGranada: 'W87',
   fecha_tiro: new Date().toISOString().split('T')[0],
-
   meteo_vel: 0, meteo_dir: 0,
   meteo_temp: 15, meteo_pres: 750,
   temp_carga: 15, dif_peso: 0, dif_vel: 0,
@@ -63,7 +63,142 @@ export function Calculadora() {
   const [faseMision, setFaseMision] = useState<'PREPARACION' | 'FUEGO'>(() => {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
+  const [logAEditar, setLogAEditar] = useState<LogTiro | null>(null);
+ const manejarGuardadoEdicion = (logIdAEditar: number, nuevoRawReglaje: any) => {
+    if (!datosCongelados) return;
 
+    let nuevoAccAz = 0;
+    let nuevoAccDist = 0;
+
+    const historialCronologico = [...historial].reverse();
+
+    const historialRecalculado = historialCronologico.map(log => {
+      // Si no es un reglaje o no tiene datos base, lo dejamos intacto
+      if (log.tipo !== 'REGLAJE' || !log.fullData?.rawReglaje) return log;
+
+      const reglajeUsado = (log.id === logIdAEditar) ? nuevoRawReglaje : log.fullData.rawReglaje;
+      const inputsHistoricos = log.fullData.inputs;
+      
+      let deltaAz = 0;
+      let deltaDist = 0;
+      let textoDetalle = log.detalle;
+      let nuevoImpactoX = 0;
+      let nuevoImpactoY = 0;
+
+      // 1. RECALCULAR GEOMETRÍA DEL IMPACTO SEGÚN EL MÉTODO
+      if (reglajeUsado.metodo === 'apreciacion') {
+        const azBaseOA = Number(inputsHistoricos.azObs || 0);
+        const distBaseOA = Number(inputsHistoricos.distObs || 0);
+        const valorDir = Math.abs(Number(reglajeUsado.val_dir || 0));
+        const valorRango = Math.abs(Number(reglajeUsado.val_rango || 0));
+        
+        const signoDir = reglajeUsado.dir === 'left' ? -1 : 1;
+        const signoRango = reglajeUsado.rango === 'add' ? 1 : -1;
+
+        const nuevoAzOA = azBaseOA + (valorDir * signoDir);
+        const nuevaDistOA = distBaseOA + (valorRango * signoRango);
+
+        let azRad = inputsHistoricos.azObsUnit === 'deg' ? nuevoAzOA * (Math.PI / 180) : nuevoAzOA * (Math.PI * 2 / 6400);
+
+        // Nuevas coordenadas de impacto en el mapa
+        const bx = Number(inputsHistoricos.ox) + nuevaDistOA * Math.sin(azRad);
+        const by = Number(inputsHistoricos.oy) + nuevaDistOA * Math.cos(azRad);
+        
+        nuevoImpactoX = Math.round(bx);
+        nuevoImpactoY = Math.round(by);
+
+        const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
+
+        if (geoEstallido) {
+          let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz < -3200) diffAz += 6400;
+
+          deltaAz = diffAz;
+          deltaDist = datosCongelados.distBase - geoEstallido.dist;
+        }
+
+        if (log.id === logIdAEditar) {
+          textoDetalle = `APR: ${reglajeUsado.dir === 'left' ? 'Izq' : 'Der'} ${valorDir}, ${reglajeUsado.rango === 'add' ? 'Largo' : 'Corto'} ${valorRango} -> (Editado)`;
+        }
+      } 
+      else {
+        // --- MÉTODO MEDICIÓN ---
+        let azObsRad = reglajeUsado.imp_unit === 'mils' 
+          ? Number(reglajeUsado.imp_az) * (Math.PI * 2 / 6400) 
+          : Number(reglajeUsado.imp_az) * (Math.PI / 180);
+
+        const bx = Number(inputsHistoricos.ox) + Number(reglajeUsado.imp_dist) * Math.sin(azObsRad);
+        const by = Number(inputsHistoricos.oy) + Number(reglajeUsado.imp_dist) * Math.cos(azObsRad);
+
+        nuevoImpactoX = Math.round(bx);
+        nuevoImpactoY = Math.round(by);
+
+        const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
+        
+        if (geoEstallido) {
+          let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz < -3200) diffAz += 6400;
+
+          deltaAz = diffAz;
+          deltaDist = datosCongelados.distBase - geoEstallido.dist;
+        }
+
+        if (log.id === logIdAEditar) {
+          textoDetalle = `MED: Estallido a ${Math.round(geoEstallido?.dist || 0)}m (Az ${Math.round(geoEstallido?.azMils || 0)}) -> (Editado)`;
+        }
+      }
+
+      // 2. ACUMULAR LA CORRECCIÓN HASTA ESTE PUNTO
+      nuevoAccAz += deltaAz;
+      nuevoAccDist += deltaDist;
+
+      // 3. CALCULAR LA NUEVA SOLUCIÓN DE TIRO CON ESTE ACUMULADO
+      const distHistoricaCalculada = datosCongelados.distBase + nuevoAccDist;
+      const derivaHistoricaCalculada = (datosCongelados.derivaBase - nuevoAccAz + 6400) % 6400;
+      const azimutMagCalculado = (datosCongelados.azimutBaseMag + nuevoAccAz + 6400) % 6400;
+      const azimutMilsCalculado = (datosCongelados.azimutBaseGrid + nuevoAccAz + 6400) % 6400;
+      // Necesitamos recalcular la elevación y el tiempo usando la balística
+      const dataMeteo = {
+        vel: inputsHistoricos.meteo_vel, dir: inputsHistoricos.meteo_dir, temp: inputsHistoricos.meteo_temp,
+        presion: inputsHistoricos.meteo_pres, difPeso: inputsHistoricos.dif_peso, difVel: inputsHistoricos.dif_vel,
+        temp_carga: inputsHistoricos.temp_carga, bloqueo: inputsHistoricos.bloqueoMeteo
+      };
+      
+      const solucion = calcularBalistica(distHistoricaCalculada, inputsHistoricos.tipoGranada, log.fullData.results.carga_rec, dataMeteo, 0);
+
+      // 4. CREAR EL NUEVO OBJETO RESULTS PARA LA BITÁCORA
+      const nuevosResults = {
+        ...log.fullData.results,
+        distancia: distHistoricaCalculada,
+        cmd_deriva: Math.round(derivaHistoricaCalculada).toString().padStart(4, '0'),
+        cmd_dist: Math.round(distHistoricaCalculada).toString(),
+        cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
+        cmd_time: solucion.tiempo,
+        azimutMag: azimutMagCalculado,  // <-- AHORA SÍ SE ACTUALIZA AL EDITAR
+        azimutMils: azimutMilsCalculado // <-- AHORA SÍ SE ACTUALIZA AL EDITAR
+      };
+
+      // 5. RETORNAR EL LOG ACTUALIZADO COMPLETAMENTE
+      return {
+        ...log,
+        detalle: textoDetalle,
+        coords: `Sol: Dist ${Math.round(distHistoricaCalculada)}`,
+        fullData: { 
+          ...log.fullData, 
+          rawReglaje: reglajeUsado,
+          results: nuevosResults,
+          impacto: { x: nuevoImpactoX, y: nuevoImpactoY } // Esto actualiza el punto en el mapa
+        }
+      };
+    });
+
+    // Finalizar: Actualizar estado global
+    setHistorial(historialRecalculado.reverse());
+    setCorreccionAcumulada({ az: nuevoAccAz, dist: nuevoAccDist });
+    setLogAEditar(null);
+  };
   const [datosCongelados, setDatosCongelados] = useState<{
     derivaBase: number,
     distBase: number,
@@ -144,24 +279,151 @@ export function Calculadora() {
     setMapId(prev => prev + 1);
   };
 
-  const restaurarEstado = (log: LogTiro) => {
-    if (!log.snapshot) return;
-    if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?`)) return;
+  // const restaurarEstado = (log: LogTiro) => {
+  //   if (!log.snapshot) return;
+  //   if (!window.confirm(`¿RESTAURAR AL TIRO #${log.id}?`)) return;
 
-    setInputs((prev: any) => ({
-      ...prev,
-      tx: log.snapshot.tx,
-      ty: log.snapshot.ty,
-      ox: log.snapshot.ox,
-      oy: log.snapshot.oy,
-      usarVariacion: log.snapshot.usarVariacion,
-      zona: log.snapshot.zona || 18 // <--- Restaurar zona
-    }));
-  };
+  //   setInputs((prev: any) => ({
+  //     ...prev,
+  //     tx: log.snapshot.tx,
+  //     ty: log.snapshot.ty,
+  //     ox: log.snapshot.ox,
+  //     oy: log.snapshot.oy,
+  //     usarVariacion: log.snapshot.usarVariacion,
+  //     zona: log.snapshot.zona || 18 // <--- Restaurar zona
+  //   }));
+  // };
 
-  const eliminarLog = (id: number) => {
+  const eliminarLog = (idABorrar: number) => {
     if (!window.confirm("¿Borrar este registro del historial?")) return;
-    setHistorial((prev: any) => prev.filter((l: LogTiro) => l.id !== id));
+
+    // 1. Quitamos el log eliminado de la lista
+    const historialFiltrado = historial.filter((l: LogTiro) => l.id !== idABorrar);
+
+    // Si borramos la misión entera (o no hay datos base), solo actualizamos la lista
+    if (!datosCongelados) {
+      setHistorial(historialFiltrado);
+      return;
+    }
+
+    // 2. Reiniciamos los acumuladores a CERO
+    let nuevoAccAz = 0;
+    let nuevoAccDist = 0;
+
+    // 3. Volvemos a calcular el "Efecto Mariposa" con los logs que quedaron vivos
+    const historialCronologico = [...historialFiltrado].reverse();
+
+    const historialRecalculado = historialCronologico.map(log => {
+      // Ignoramos la salva inicial (no suma corrección)
+      if (log.tipo !== 'REGLAJE' || !log.fullData?.rawReglaje) return log;
+
+      const reglajeUsado = log.fullData.rawReglaje;
+      const inputsHistoricos = log.fullData.inputs;
+      
+      let deltaAz = 0;
+      let deltaDist = 0;
+      let nuevoImpactoX = 0;
+      let nuevoImpactoY = 0;
+
+      // RECALCULAR GEOMETRÍA (Igual que en Edición)
+      if (reglajeUsado.metodo === 'apreciacion') {
+        const azBaseOA = Number(inputsHistoricos.azObs || 0);
+        const distBaseOA = Number(inputsHistoricos.distObs || 0);
+        const valorDir = Math.abs(Number(reglajeUsado.val_dir || 0));
+        const valorRango = Math.abs(Number(reglajeUsado.val_rango || 0));
+        
+        const signoDir = reglajeUsado.dir === 'left' ? -1 : 1;
+        const signoRango = reglajeUsado.rango === 'add' ? 1 : -1;
+
+        const nuevoAzOA = azBaseOA + (valorDir * signoDir);
+        const nuevaDistOA = distBaseOA + (valorRango * signoRango);
+
+        let azRad = inputsHistoricos.azObsUnit === 'deg' ? nuevoAzOA * (Math.PI / 180) : nuevoAzOA * (Math.PI * 2 / 6400);
+
+        const bx = Number(inputsHistoricos.ox) + nuevaDistOA * Math.sin(azRad);
+        const by = Number(inputsHistoricos.oy) + nuevaDistOA * Math.cos(azRad);
+        
+        nuevoImpactoX = Math.round(bx);
+        nuevoImpactoY = Math.round(by);
+
+        const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
+
+        if (geoEstallido) {
+          let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz < -3200) diffAz += 6400;
+
+          deltaAz = diffAz;
+          deltaDist = datosCongelados.distBase - geoEstallido.dist;
+        }
+      } 
+      else {
+        // Método Medición
+        let azObsRad = reglajeUsado.imp_unit === 'mils' 
+          ? Number(reglajeUsado.imp_az) * (Math.PI * 2 / 6400) 
+          : Number(reglajeUsado.imp_az) * (Math.PI / 180);
+
+        const bx = Number(inputsHistoricos.ox) + Number(reglajeUsado.imp_dist) * Math.sin(azObsRad);
+        const by = Number(inputsHistoricos.oy) + Number(reglajeUsado.imp_dist) * Math.cos(azObsRad);
+
+        nuevoImpactoX = Math.round(bx);
+        nuevoImpactoY = Math.round(by);
+
+        const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
+        
+        if (geoEstallido) {
+          let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
+          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz < -3200) diffAz += 6400;
+
+          deltaAz = diffAz;
+          deltaDist = datosCongelados.distBase - geoEstallido.dist;
+        }
+      }
+
+      // SUMAR AL ACUMULADOR (que ahora no incluye al borrado)
+      nuevoAccAz += deltaAz;
+      nuevoAccDist += deltaDist;
+
+      // ACTUALIZAR ESTE LOG
+      const distHistoricaCalculada = datosCongelados.distBase + nuevoAccDist;
+      const derivaHistoricaCalculada = (datosCongelados.derivaBase - nuevoAccAz + 6400) % 6400;
+      const azimutMagCalculado = (datosCongelados.azimutBaseMag + nuevoAccAz + 6400) % 6400;
+      const azimutMilsCalculado = (datosCongelados.azimutBaseGrid + nuevoAccAz + 6400) % 6400;
+      
+      const dataMeteo = {
+        vel: inputsHistoricos.meteo_vel, dir: inputsHistoricos.meteo_dir, temp: inputsHistoricos.meteo_temp,
+        presion: inputsHistoricos.meteo_pres, difPeso: inputsHistoricos.dif_peso, difVel: inputsHistoricos.dif_vel,
+        temp_carga: inputsHistoricos.temp_carga, bloqueo: inputsHistoricos.bloqueoMeteo
+      };
+      
+      const solucion = calcularBalistica(distHistoricaCalculada, inputsHistoricos.tipoGranada, log.fullData.results.carga_rec, dataMeteo, 0);
+
+      const nuevosResults = {
+        ...log.fullData.results,
+        distancia: distHistoricaCalculada,
+        cmd_deriva: Math.round(derivaHistoricaCalculada).toString().padStart(4, '0'),
+        cmd_dist: Math.round(distHistoricaCalculada).toString(),
+        cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
+        cmd_time: solucion.tiempo,
+        azimutMag: azimutMagCalculado,
+        azimutMils: azimutMilsCalculado
+      };
+
+      return {
+        ...log,
+        coords: `Sol: Dist ${Math.round(distHistoricaCalculada)}`,
+        fullData: { 
+          ...log.fullData, 
+          results: nuevosResults,
+          impacto: { x: nuevoImpactoX, y: nuevoImpactoY }
+        }
+      };
+    });
+
+    // 4. Aplicar el resultado recalculado a la pantalla principal y al mapa
+    setHistorial(historialRecalculado.reverse());
+    setCorreccionAcumulada({ az: nuevoAccAz, dist: nuevoAccDist });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -488,19 +750,22 @@ export function Calculadora() {
   const nuevoDist = correccionAcumulada.dist + deltaDist;
 
   setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
-
+  const azMagActualizado = datosCongelados ? (datosCongelados.azimutBaseMag + nuevoAz + 6400) % 6400 : res.azimutMag;
+  const azGridActualizado = datosCongelados ? (datosCongelados.azimutBaseGrid + nuevoAz + 6400) % 6400 : res.azimutMils;
   // AQUÍ ES DONDE SE MUESTRAN LOS DATOS QUE TÚ QUIERES VER
   // Si tenías 1324 y sumaste 376, 'distancia' valdrá 1700.
 
   const logResultOverride = {
     ...res,
     distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
-    cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-'
+    cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-',
+    azimutMag: azMagActualizado,    // <-- AHORA SÍ SE GUARDA BIEN DESDE EL PRIMER REGLAJE
+    azimutMils: azGridActualizado   // <-- AHORA SÍ SE GUARDA BIEN DESDE EL PRIMER REGLAJE
   };
-
   const extraData: any = {
     inputs: { ...inputs },
-    results: logResultOverride
+    results: logResultOverride,
+    rawReglaje: { ...reglaje }
   };
   if (impactoX > 0 && impactoY > 0) {
     extraData.impacto = { x: impactoX, y: impactoY };
@@ -577,13 +842,20 @@ return (
             faseMision={faseMision}
           />
           <MissionLog
-            logs={historial}
-            onRestore={restaurarEstado}
-            onDelete={eliminarLog}
+              logs={historial}
+              onDelete={eliminarLog}
+              onEdit={setLogAEditar}
           />
           <CorrectionPanel
             reglaje={reglaje} onChange={handleReglaje} onApply={aplicarCorreccion}
           />
+          {logAEditar && (
+              <EditReglajeModal 
+                  log={logAEditar} 
+                  onClose={() => setLogAEditar(null)} 
+                  onSave={manejarGuardadoEdicion} 
+              />
+          )}
         </div>
       </div>
     </div>
