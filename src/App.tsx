@@ -6,7 +6,10 @@ import './index.css';
 import { Tablas } from './views/Tablas';
 import { Convertidor } from './views/Convertidor';
 import { Manual } from './views/Manual';
+import { Armeria } from './views/Armeria';
 
+// App ya monta con ARSENAL sincronizado (lo garantiza main.tsx).
+// No se necesita ningún estado de carga aquí.
 function App() {
   return (
     <Router>
@@ -21,6 +24,7 @@ function App() {
             <Route path="/tablas" element={<Tablas />} />
             <Route path="/convertidor" element={<Convertidor />} />
             <Route path="/manual" element={<Manual />} />
+            <Route path="/armeria" element={<Armeria />} />
           </Routes>
         </div>
 

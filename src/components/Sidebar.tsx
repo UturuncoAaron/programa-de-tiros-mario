@@ -1,7 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 
 // --- ÍCONOS SVG ---
-
 const IconCalc = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="4" y="2" width="16" height="20" rx="2"></rect>
@@ -22,6 +21,16 @@ const IconBook = () => (
   </svg>
 );
 
+const IconArmeria = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="8" width="20" height="8" rx="2"></rect>
+    <line x1="6" y1="8" x2="6" y2="5"></line>
+    <line x1="18" y1="8" x2="18" y2="5"></line>
+    <line x1="12" y1="8" x2="12" y2="4"></line>
+    <circle cx="12" cy="12" r="1.5" fill="currentColor"></circle>
+  </svg>
+);
+
 const IconSave = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
@@ -32,9 +41,10 @@ const IconSave = () => (
 
 const IconConvert = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-     <path d="M7 10h14l-4-4m0 8h-14l4 4" />
+    <path d="M7 10h14l-4-4m0 8h-14l4 4" />
   </svg>
 );
+
 const IconInfo = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"></circle>
@@ -42,34 +52,35 @@ const IconInfo = () => (
     <line x1="12" y1="8" x2="12.01" y2="8"></line>
   </svg>
 );
-export function Sidebar() {
-  const location = useLocation(); 
-  const isActive = (path: string) => location.pathname === path ? 'active' : '';
 
- return (
+// --- ITEMS DE NAVEGACIÓN (fuera del componente, no se recrea en cada render) ---
+const NAV_ITEMS = [
+  { to: '/',            label: 'CALC',    Icon: IconCalc    },
+  { to: '/tablas',      label: 'TABLAS',  Icon: IconBook    },
+  { to: '/armeria',     label: 'ARMERIA', Icon: IconArmeria },
+  { to: '/registros',   label: 'LOGS',    Icon: IconSave    },
+  { to: '/convertidor', label: 'CONV',    Icon: IconConvert },
+  { to: '/manual',      label: 'INFO',    Icon: IconInfo    },
+];
+
+export function Sidebar() {
+  const location = useLocation();
+
+  return (
     <div className="sidebar-main">
       <div className="sidebar-logo">M-M</div>
+
       <nav className="sidebar-nav">
-        <Link to="/" className={`nav-btn ${isActive('/')}`}>
-            <span className="icon"><IconCalc /></span>
-            <span className="label">CALC</span>
-        </Link>
-        <Link to="/tablas" className={`nav-btn ${isActive('/tablas')}`}>
-            <span className="icon"><IconBook /></span>
-            <span className="label">TABLAS</span>
-        </Link>
-        <Link to="/registros" className={`nav-btn ${isActive('/registros')}`}>
-            <span className="icon"><IconSave /></span>
-            <span className="label">LOGS</span>
-        </Link>
-        <Link to="/convertidor" className={`nav-btn ${isActive('/convertidor')}`}>
-            <span className="icon"><IconConvert /></span>
-            <span className="label">CONV</span>
-        </Link>
-        <Link to="/manual" className={`nav-btn ${isActive('/manual')}`}>
-                    <span className="icon"><IconInfo /></span>
-                    <span className="label">INFO</span>
-        </Link>
+        {NAV_ITEMS.map(({ to, label, Icon }) => (
+          <Link
+            key={to}
+            to={to}
+            className={`nav-btn ${location.pathname === to ? 'active' : ''}`}
+          >
+            <span className="icon"><Icon /></span>
+            <span className="label">{label}</span>
+          </Link>
+        ))}
       </nav>
 
       <div className="sidebar-footer">
