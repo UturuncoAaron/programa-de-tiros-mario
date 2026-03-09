@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
+// ============================================================
+// CONSTANTES Y ESTILOS
+// ============================================================
 const C = {
   neon:   '#0f0',
   dim:    '#004400',
@@ -11,7 +14,7 @@ const C = {
 };
 
 const SECCIONES = [
-  { id: 'flujo',    label: '01. FLUJO DE MISIÓN'       },
+  { id: 'flujo',   label: '01. FLUJO DE MISIÓN'       },
   { id: 'inputs',   label: '02. INGRESO DE DATOS'       },
   { id: 'fuego',    label: '03. EJECUCIÓN Y BLOQUEO'    },
   { id: 'reglaje',  label: '04. REGLAJE Y CORRECCIÓN'   },
@@ -20,6 +23,34 @@ const SECCIONES = [
   { id: 'reset',    label: '07. FIN DE MISIÓN'          },
 ];
 
+// ============================================================
+// INTERFACES PARA SUBCOMPONENTES UI
+// ============================================================
+interface BtnNavProps {
+    id: string;
+    label: string;
+    active: string;
+    onClick: (id: string) => void;
+}
+
+interface GenericProps {
+    children: ReactNode;
+}
+
+interface CardFaseProps {
+    titulo: string;
+    desc: string;
+    color: string;
+}
+
+interface BoxInfoProps {
+    titulo: string;
+    children: ReactNode;
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
 export function Manual() {
   const [seccion, setSeccion] = useState<string>('flujo');
 
@@ -99,15 +130,24 @@ export function Manual() {
             {/* ── 02. INPUTS ── */}
             {seccion === 'inputs' && (
               <div>
-                <Titulo>02. INGRESO DE DATOS</Titulo>
+                <Titulo>02. INGRESO DE DATOS Y CÁLCULO POLAR</Titulo>
 
-                <Subtitulo>A. LOCALIZACIÓN DE POSICIONES</Subtitulo>
+                <Subtitulo>A. LOCALIZACIÓN Y TRIANGULACIÓN (MÉTODO O.A.)</Subtitulo>
+                <p style={estiloP}>
+                  El sistema está diseñado para operar en conjunto con un Observador Avanzado (OA) en el frente. El flujo de localización es el siguiente:
+                </p>
                 <ul style={estiloLista}>
                   <li>
-                    <strong style={{ color: C.neon }}>COORDENADAS GRID:</strong> Ingrese Este/Norte del Mortero y Objetivo directamente. El sistema calcula azimut y distancia por solución inversa.
+                    <strong style={{ color: C.neon }}>1. POSICIÓN DEL MORTERO:</strong> Ingrese las coordenadas (Grid o DMS) de la posición de la pieza de artillería.
                   </li>
                   <li>
-                    <strong style={{ color: C.neon }}>OBSERVADOR AVANZADO (OA):</strong> Ingrese posición del OA + azimut y distancia al objetivo. El sistema triangula el blanco automáticamente.
+                    <strong style={{ color: C.neon }}>2. POSICIÓN DEL OBSERVADOR (O.A.):</strong> Ingrese las coordenadas exactas donde se encuentra el observador.
+                  </li>
+                  <li>
+                    <strong style={{ color: C.neon }}>3. DATOS POLARES AL BLANCO:</strong> El O.A. reporta el <strong style={{color: C.amber}}>Azimut</strong> y la <strong style={{color: C.amber}}>Distancia</strong> desde su posición hacia el objetivo enemigo.
+                  </li>
+                  <li>
+                    <strong style={{ color: C.cyan }}>➡ CÁLCULO AUTOMÁTICO:</strong> El sistema procesa estos datos polares y triangula matemáticamente la posición exacta del blanco, estableciendo la geometría de tiro final.
                   </li>
                 </ul>
 
@@ -385,7 +425,7 @@ export function Manual() {
 }
 
 // ── COMPONENTES UI ──
-const BtnNav = ({ id, label, active, onClick }: any) => (
+const BtnNav: React.FC<BtnNavProps> = ({ id, label, active, onClick }) => (
   <li
     onClick={() => onClick(id)}
     style={{
@@ -404,31 +444,31 @@ const BtnNav = ({ id, label, active, onClick }: any) => (
   </li>
 );
 
-const Titulo = ({ children }: any) => (
+const Titulo: React.FC<GenericProps> = ({ children }) => (
   <h2 style={{ color: C.neon, borderBottom: `1px solid ${C.dim}`, paddingBottom: '10px', marginBottom: '20px', letterSpacing: '1px' }}>
     {children}
   </h2>
 );
 
-const Subtitulo = ({ children }: any) => (
+const Subtitulo: React.FC<GenericProps> = ({ children }) => (
   <h3 style={{ color: '#fff', marginTop: '30px', marginBottom: '15px', fontSize: '1.1rem' }}>
     {children}
   </h3>
 );
 
-const CardFase = ({ titulo, desc, color }: any) => (
+const CardFase: React.FC<CardFaseProps> = ({ titulo, desc, color }) => (
   <div style={{ border: `1px solid ${color}`, padding: '20px', borderRadius: '4px', background: `${color}10` }}>
     <h4 style={{ color: color, margin: '0 0 10px 0' }}>{titulo}</h4>
     <p style={{ color: C.text, fontSize: '0.9rem', margin: 0 }}>{desc}</p>
   </div>
 );
 
-const BoxInfo = ({ titulo, children }: any) => (
+const BoxInfo: React.FC<BoxInfoProps> = ({ titulo, children }) => (
   <div style={{ background: 'rgba(255,255,255,0.05)', padding: '15px', border: `1px solid ${C.dim}` }}>
     <div style={{ color: C.neon, fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '5px' }}>{titulo}</div>
     <div style={{ color: C.text, fontSize: '0.9rem' }}>{children}</div>
   </div>
 );
 
-const estiloP    = { color: C.text, lineHeight: '1.6', marginBottom: '15px' };
-const estiloLista = { color: C.text, lineHeight: '1.8', paddingLeft: '20px' };
+const estiloP: React.CSSProperties    = { color: C.text, lineHeight: '1.6', marginBottom: '15px' };
+const estiloLista: React.CSSProperties = { color: C.text, lineHeight: '1.8', paddingLeft: '20px' };

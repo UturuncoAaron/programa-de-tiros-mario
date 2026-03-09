@@ -1,26 +1,39 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import XLSX from 'xlsx-js-style';
-import type { LogTiro } from './Calculadora'; // Importamos la interfaz original para no duplicar tipos
+import type { LogTiro } from './Calculadora';
 
 // --- ÍCONOS SVG ---
 const IconTrash = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>);
 const IconDownload = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>);
-const IconBack = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>);
+
+// --- INTERFACES DE ESTILOS EXCEL ---
+interface ExcelCellStyle {
+    font?: { name?: string; sz?: number; bold?: boolean; color?: { rgb: string } };
+    border?: {
+        top?: { style: string; color: { rgb: string } };
+        bottom?: { style: string; color: { rgb: string } };
+        left?: { style: string; color: { rgb: string } };
+        right?: { style: string; color: { rgb: string } };
+    };
+    alignment?: { vertical: string; horizontal: string };
+    fill?: { fgColor: { rgb: string } };
+}
 
 export function Registros() {
-    const [historial, setHistorial] = useState<LogTiro[]>([]);
-
-    // Cargar datos al montar
-    useEffect(() => {
+    // INICIALIZACIÓN PEREZOSA (Lazy Initialization): 
+    // Reemplaza al useEffect para evitar re-renders innecesarios.
+    const [historial, setHistorial] = useState<LogTiro[]>(() => {
         const data = localStorage.getItem('mision_logs');
         if (data) {
             try {
-                setHistorial(JSON.parse(data));
+                return JSON.parse(data);
             } catch (e) {
                 console.error("Error leyendo logs", e);
+                return [];
             }
         }
-    }, []);
+        return [];
+    });
 
     const descargarExcel = () => {
         if (historial.length === 0) { alert("NO HAY DATOS PARA EXPORTAR."); return; }
@@ -28,10 +41,10 @@ export function Registros() {
         const dataDetallada = historial.map(log => {
             // Protección contra datos corruptos o antiguos
             if (!log.fullData) return { ID: log.id, NOTA: "Datos corruptos o versión antigua." };
-            
+
             const inp = log.fullData.inputs;
             const res = log.fullData.results;
-            
+
             // Lógica para determinar carga real usada
             const cargaReal = inp.carga_seleccionada === '-' ? res.carga_rec : inp.carga_seleccionada;
 
@@ -82,13 +95,13 @@ export function Registros() {
                 const cell_address = XLSX.utils.encode_cell({ r: R, c: C });
                 if (!ws[cell_address]) continue;
 
-                let cellStyle: any = {
+                const cellStyle: ExcelCellStyle = {
                     font: { name: "Courier New", sz: 10 },
-                    border: { 
-                        top: { style: "thin", color: { rgb: "555555" } }, 
-                        bottom: { style: "thin", color: { rgb: "555555" } }, 
-                        left: { style: "thin", color: { rgb: "555555" } }, 
-                        right: { style: "thin", color: { rgb: "555555" } } 
+                    border: {
+                        top: { style: "thin", color: { rgb: "555555" } },
+                        bottom: { style: "thin", color: { rgb: "555555" } },
+                        left: { style: "thin", color: { rgb: "555555" } },
+                        right: { style: "thin", color: { rgb: "555555" } }
                     },
                     alignment: { vertical: "center", horizontal: "center" }
                 };
@@ -101,9 +114,9 @@ export function Registros() {
                 // Estilo Filas (Zebra)
                 else {
                     cellStyle.fill = { fgColor: { rgb: R % 2 === 0 ? "EEEEEE" : "FFFFFF" } };
-                    
+
                     // Colorear columna TIPO
-                    if (C === 2) { 
+                    if (C === 2) {
                         const val = ws[cell_address].v;
                         cellStyle.font = { bold: true, color: { rgb: val === 'SALVA' ? "AA0000" : "006699" } };
                     }
@@ -121,16 +134,16 @@ export function Registros() {
         XLSX.writeFile(wb, `FDC_REPORTE_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
 
-    const borrarTodo = () => { 
-        if (window.confirm("CONFIRMAR: ¿PURGAR TODA LA BITÁCORA?\n\nEsta acción no se puede deshacer.")) { 
-            localStorage.removeItem('mision_logs'); 
-            setHistorial([]); 
-        } 
+    const borrarTodo = () => {
+        if (window.confirm("CONFIRMAR: ¿PURGAR TODA LA BITÁCORA?\n\nEsta acción no se puede deshacer.")) {
+            localStorage.removeItem('mision_logs');
+            setHistorial([]);
+        }
     }
 
     return (
         <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column', background: '#0b0b0b', color: '#ccc', fontFamily: 'Consolas, monospace' }}>
-            
+
             {/* HEADER */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
                 <div>
@@ -175,13 +188,13 @@ export function Registros() {
                                 const fd = log.fullData;
                                 if (!fd) return null;
                                 const carga = fd.inputs.carga_seleccionada === '-' ? fd.results.carga_rec : fd.inputs.carga_seleccionada;
-                                
+
                                 return (
                                     <tr key={log.id} style={{ background: i % 2 === 0 ? '#0e0e0e' : '#141414', borderBottom: '1px solid #222' }}>
                                         <td style={tdStyle}>#{log.id}</td>
                                         <td style={tdStyle}>{log.hora}</td>
                                         <td style={tdStyle}>
-                                            <span style={{ 
+                                            <span style={{
                                                 padding: '2px 6px', borderRadius: '2px', fontSize: '0.7rem', fontWeight: 'bold',
                                                 background: log.tipo === 'SALVA' ? '#330000' : '#002233',
                                                 color: log.tipo === 'SALVA' ? '#ff4444' : '#00bcd4'
@@ -202,7 +215,7 @@ export function Registros() {
                     </tbody>
                 </table>
             </div>
-            
+
             <div style={{ marginTop: '10px', fontSize: '0.7rem', color: '#444', textAlign: 'right' }}>
                 MORTEROS-MARIA SYSTEM // v2.0
             </div>

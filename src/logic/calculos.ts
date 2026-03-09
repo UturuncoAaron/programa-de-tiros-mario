@@ -1,15 +1,37 @@
 import * as geomagnetismRaw from 'geomagnetism';
 
+// ============================================================
+// TIPOS E INTERFACES PARA LIBRERÍAS EXTERNAS
+// ============================================================
+
+// Interfaz para documentar lo que devuelve la librería geomagnetism
+interface GeomagnetismModel {
+    point: (coords: [number, number]) => { decl: number; [key: string]: unknown };
+}
+
+interface GeomagnetismLib {
+    model: () => GeomagnetismModel;
+}
+
+// ============================================================
+// CONSTANTES
+// ============================================================
 const MIL_OTAN = 6400;
 const GRADOS_CIRCULO = 360;
 const FACTOR_CONVERSION = MIL_OTAN / GRADOS_CIRCULO;
 
-function getGeomagnetism() {
-    // @ts-ignore
-    return geomagnetismRaw.default || geomagnetismRaw;
+function getGeomagnetism(): GeomagnetismLib {
+    // ESLint prefiere ts-expect-error porque documenta que SABES que hay un error de tipos
+    // debido a la falta de @types/geomagnetism, pero esperas que funcione en runtime.
+    // @ts-expect-error: La librería geomagnetism no tiene tipos oficiales de TypeScript.
+    const lib = geomagnetismRaw.default || geomagnetismRaw;
+    return lib as GeomagnetismLib;
 }
 
-// --- CAMBIO IMPORTANTE AQUÍ ABAJO ---
+// ============================================================
+// FUNCIONES DE CÁLCULO
+// ============================================================
+
 // Ahora recibimos 'zona' (por defecto 18 si no se pasa nada)
 export function calcularVariacionWMM(mx: number, my: number, zona: number = 18): number {
     const DEFAULT_VAR_MILS = -43;
@@ -17,9 +39,6 @@ export function calcularVariacionWMM(mx: number, my: number, zona: number = 18):
     if (!mx || !my || mx === 0) return DEFAULT_VAR_MILS;
 
     try {
-        // --- AQUÍ ESTABA EL ERROR ---
-        // Antes decía: utmToLatLng(mx, my, 18, true);
-        // Ahora dice:
         const [lat, lon] = utmToLatLng(mx, my, zona, true);
 
         if (isNaN(lat) || isNaN(lon)) return DEFAULT_VAR_MILS;
@@ -49,7 +68,7 @@ export function calcularGeometria(mx: number, my: number, tx: number, ty: number
     const dx = tx - mx;
     const dy = ty - my;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    let azRadianes = Math.atan2(dx, dy);
+    const azRadianes = Math.atan2(dx, dy);
 
     let azMils = azRadianes * 6400 / (Math.PI * 2);
 
@@ -60,7 +79,6 @@ export function calcularGeometria(mx: number, my: number, tx: number, ty: number
         azMils: parseFloat(azMils.toFixed(0))
     };
 }
-
 
 export function utmToLatLng(x: number, y: number, zone: number, southHemi: boolean = true): [number, number] {
     const a = 6378137.0;
@@ -94,6 +112,7 @@ export function utmToLatLng(x: number, y: number, zone: number, southHemi: boole
     const lon = ((zone * 6 - 183) * (Math.PI / 180) + (Q5 - Q6 + Q7) / Math.cos(fpLat)) * (180 / Math.PI);
     return [lat, lon];
 }
+
 export function dmsToDecimal(grados: number, minutos: number, segundos: number, sur: boolean = true): number {
     const val = Math.abs(grados) + (minutos / 60) + (segundos / 3600);
     return sur ? -val : val; // Si es Sur u Oeste, devuelve negativo
@@ -138,6 +157,7 @@ export function latLonToUtm(lat: number, lon: number, zone: number) {
 
     return { x: Math.round(easting), y: Math.round(northing) };
 }
+
 export function decimalToDms(deg: number): string {
     const d = Math.abs(deg);
     const degrees = Math.floor(d);

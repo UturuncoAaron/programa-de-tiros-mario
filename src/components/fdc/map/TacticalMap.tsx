@@ -3,13 +3,13 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { LogTiro } from '../../../views/Calculadora';
 
-import { MapControls }  from './MapControls';
-import { GridLayer }    from './Layers/GridLayer';
+import { MapControls } from './MapControls';
+import { GridLayer } from './Layers/GridLayer';
 import { MainElements } from './Layers/MainElements';
 import { ImpactsLayer } from './Layers/ImpactsLayer';
 
 // ============================================================
-// ESTILOS CSS INYECTADOS
+// CONSTANTES — fuera del componente, no se recrean en cada render
 // ============================================================
 const MAP_STYLES = `
   .error-label-tooltip { background: transparent; border: none; box-shadow: none; font-family: monospace; font-size: 10px; font-weight: bold; }
@@ -21,33 +21,31 @@ const MAP_STYLES = `
   .popup-tactico .leaflet-popup-tip    { background: #0a0a0a; }
 `;
 
-// ============================================================
-// CONFIGURACIÓN DE PROVEEDORES
-// ============================================================
 const TILE_PROVIDERS = {
   esri: {
-    url:     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     maxZoom: 19,
     opacity: 0.65,
   },
   google: {
-    url:     'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
     maxZoom: 21,
     opacity: 0.65,
   },
   labels: {
-    url:     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
     maxZoom: 21,
     opacity: 0.90,
   },
 } as const;
 
+/** Zoom a partir del cual Esri falla en Sudamérica → activar Google */
 const ZOOM_FALLBACK = 17;
 
 // ============================================================
 // TIPOS
 // ============================================================
-interface TacticalMapProps {
+export interface TacticalMapProps {
   mx: number; my: number;
   tx: number; ty: number;
   ox: number; oy: number;
@@ -57,33 +55,103 @@ interface TacticalMapProps {
   rangoCarga?: { min: number; max: number };
 }
 
-interface MapState {
-  mode:       'sat' | 'radar';
-  isOnline:   boolean;
+type MapMode = 'sat' | 'radar';
+type ProviderKey = 'esri' | 'google';
+
+/**
+ * Snapshot del estado React que los listeners de Leaflet necesitan
+ * leer sin capturar closures obsoletos.
+ */
+interface LiveState {
+  mode: MapMode;
+  isOnline: boolean;
   showLabels: boolean;
 }
 
+interface StatusBarProps {
+  mode: MapMode;
+  isOnline: boolean;
+  activeProvider: ProviderKey;
+}
+
 // ============================================================
-// COMPONENTE
+// SUB-COMPONENTE: StatusBar
+// Extraído para mantener TacticalMap limpio y testeable.
+// ============================================================
+function StatusBar({ mode, isOnline, activeProvider }: StatusBarProps) {
+  return (
+    <div style={{
+      position: 'absolute',
+      bottom: 8,
+      left: 12,
+      zIndex: 1000,
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      textShadow: '0 0 3px #000',
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'center',
+      pointerEvents: 'none',
+    }}>
+      {mode === 'radar' && (
+        <span style={{ color: '#00ffcc' }}>GRID: 1KM</span>
+      )}
+      {mode === 'sat' && (
+        <span style={{ color: activeProvider === 'google' ? '#ffb300' : '#00ffcc' }}>
+          SRC: {activeProvider.toUpperCase()}
+        </span>
+      )}
+      <span style={{ color: isOnline ? '#00ff00' : '#ff4444' }}>
+        {isOnline ? '● ONLINE' : '● OFFLINE'}
+      </span>
+    </div>
+  );
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL
 // ============================================================
 export function TacticalMap(props: TacticalMapProps) {
-  const [isOnline,       setIsOnline]       = useState(navigator.onLine);
-  const [mode,           setMode]           = useState<'sat' | 'radar'>(navigator.onLine ? 'sat' : 'radar');
-  const [mapReady,       setMapReady]       = useState(false);
-  const [showLabels,     setShowLabels]     = useState(true);
-  const [activeProvider, setActiveProvider] = useState<'esri' | 'google'>('esri');
+  const {
+    mx, my, tx, ty, ox, oy,
+    zona, historial, orientacion_base, rangoCarga,
+  } = props;
 
-  const mapRef          = useRef<L.Map | null>(null);
+  // ── Estado React ───────────────────────────────────────────
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [mode, setMode] = useState<MapMode>(navigator.onLine ? 'sat' : 'radar');
+  const [showLabels, setShowLabels] = useState(true);
+  const [activeProvider, setActiveProvider] = useState<ProviderKey>('esri');
+
+  /**
+   * ✅ ESLint fix: `mapInstance` en state reemplaza `mapRef.current` en JSX.
+   * Leer refs durante el render está prohibido — state sí está permitido.
+   * Se setea una sola vez tras la inicialización de Leaflet.
+   */
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+
+  // ── Refs internos (no provocan re-renders) ─────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const layerEsriRef    = useRef<L.TileLayer | null>(null);
-  const layerGoogleRef  = useRef<L.TileLayer | null>(null);
-  const layerLabelsRef  = useRef<L.TileLayer | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const layerEsriRef = useRef<L.TileLayer | null>(null);
+  const layerGoogleRef = useRef<L.TileLayer | null>(null);
+  const layerLabelsRef = useRef<L.TileLayer | null>(null);
 
-  const stateRef = useRef<MapState>({ mode: 'sat', isOnline: true, showLabels: true });
+  /**
+   * stateRef — mirror del estado para listeners de Leaflet.
+   * El listener 'zoomend' se registra una sola vez al montar.
+   * Sin este ref, siempre leería los valores iniciales del closure.
+   */
+  const stateRef = useRef<LiveState>({ mode: 'sat', isOnline: true, showLabels: true });
 
   useEffect(() => {
     stateRef.current = { mode, isOnline, showLabels };
   }, [mode, isOnline, showLabels]);
+
+  // ============================================================
+  // LÓGICA DE CAPAS — solo usa refs, sin deps de estado
+  // Esto garantiza que useCallback nunca se recrea innecesariamente
+  // ============================================================
 
   const syncSatLayers = useCallback((zoom: number, satMode: boolean, online: boolean) => {
     const map = mapRef.current;
@@ -93,167 +161,165 @@ export function TacticalMap(props: TacticalMapProps) {
 
     if (satMode && online) {
       if (useGoogle) {
-        layerEsriRef.current.remove();
-        layerGoogleRef.current.addTo(map);
+        if (map.hasLayer(layerEsriRef.current)) layerEsriRef.current.remove();
+        if (!map.hasLayer(layerGoogleRef.current)) layerGoogleRef.current.addTo(map);
       } else {
-        layerGoogleRef.current.remove();
-        layerEsriRef.current.addTo(map);
+        if (map.hasLayer(layerGoogleRef.current)) layerGoogleRef.current.remove();
+        if (!map.hasLayer(layerEsriRef.current)) layerEsriRef.current.addTo(map);
       }
       setActiveProvider(useGoogle ? 'google' : 'esri');
     } else {
-      layerEsriRef.current.remove();
-      layerGoogleRef.current.remove();
+      if (map.hasLayer(layerEsriRef.current)) layerEsriRef.current.remove();
+      if (map.hasLayer(layerGoogleRef.current)) layerGoogleRef.current.remove();
     }
   }, []);
 
   const syncLabels = useCallback((satMode: boolean, online: boolean, labels: boolean) => {
     const map = mapRef.current;
     if (!map || !layerLabelsRef.current) return;
-    if (satMode && online && labels) layerLabelsRef.current.addTo(map);
-    else                             layerLabelsRef.current.remove();
+
+    if (satMode && online && labels) {
+      if (!map.hasLayer(layerLabelsRef.current)) layerLabelsRef.current.addTo(map);
+    } else {
+      if (map.hasLayer(layerLabelsRef.current)) layerLabelsRef.current.remove();
+    }
   }, []);
 
-  const syncAllLayers = useCallback((zoom: number, state: MapState) => {
+  const syncAllLayers = useCallback((zoom: number, state: LiveState) => {
     syncSatLayers(zoom, state.mode === 'sat', state.isOnline);
     syncLabels(state.mode === 'sat', state.isOnline, state.showLabels);
   }, [syncSatLayers, syncLabels]);
 
   // ============================================================
-  // INICIALIZACIÓN DEL MAPA
+  // INICIALIZACIÓN DEL MAPA — ejecuta una sola vez al montar
   // ============================================================
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = L.map(mapContainerRef.current, {
-      zoomControl:        false,
+      zoomControl: false,
       attributionControl: false,
-      zoomSnap:           0.5,
+      zoomSnap: 0.5,
     }).setView([-12.0, -77.0], 13);
 
     map.getContainer().style.background = '#020a0d';
 
-    layerEsriRef.current   = L.tileLayer(TILE_PROVIDERS.esri.url,   { maxZoom: TILE_PROVIDERS.esri.maxZoom,   opacity: TILE_PROVIDERS.esri.opacity });
+    layerEsriRef.current = L.tileLayer(TILE_PROVIDERS.esri.url, { maxZoom: TILE_PROVIDERS.esri.maxZoom, opacity: TILE_PROVIDERS.esri.opacity });
     layerGoogleRef.current = L.tileLayer(TILE_PROVIDERS.google.url, { maxZoom: TILE_PROVIDERS.google.maxZoom, opacity: TILE_PROVIDERS.google.opacity });
     layerLabelsRef.current = L.tileLayer(TILE_PROVIDERS.labels.url, { maxZoom: TILE_PROVIDERS.labels.maxZoom, opacity: TILE_PROVIDERS.labels.opacity });
 
+    // Usa stateRef para leer estado actual en el momento del evento,
+    // no el estado capturado en el closure del montaje.
     map.on('zoomend', () => {
       syncAllLayers(map.getZoom(), stateRef.current);
     });
 
     mapRef.current = map;
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       map.invalidateSize();
-      setMapReady(true);
+      // ✅ Guardamos en STATE para poder usarlo en JSX legalmente
+      setMapInstance(map);
     }, 200);
 
     return () => {
+      clearTimeout(timer);
       map.off();
       map.remove();
-      mapRef.current         = null;
-      layerEsriRef.current   = null;
+      mapRef.current = null;
+      layerEsriRef.current = null;
       layerGoogleRef.current = null;
       layerLabelsRef.current = null;
-      setMapReady(false);
+      setMapInstance(null);
     };
   }, [syncAllLayers]);
-
-  // ============================================================
-  // NUEVO: RESIZE OBSERVER (Buenas prácticas Senior)
-  // Observa el contenedor y adapta Leaflet instantáneamente
-  // ============================================================
-  useEffect(() => {
-    if (!mapReady || !mapContainerRef.current) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      // Cuando el contenedor cambia de tamaño (por animaciones o drag del panel),
-      // le decimos a Leaflet que repinte el mapa automáticamente.
-      mapRef.current?.invalidateSize();
-    });
-
-    resizeObserver.observe(mapContainerRef.current);
-
-    return () => resizeObserver.disconnect();
-  }, [mapReady]);
 
   // ============================================================
   // DETECTOR ONLINE / OFFLINE
   // ============================================================
   useEffect(() => {
-    const onOnline  = () => setIsOnline(true);
-    const onOffline = () => { setIsOnline(false); setMode('radar'); };
-    window.addEventListener('online',  onOnline);
-    window.addEventListener('offline', onOffline);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setMode('radar');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     return () => {
-      window.removeEventListener('online',  onOnline);
-      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
+  // ============================================================
+  // SINCRONIZAR CAPAS AL CAMBIAR MODO / ONLINE / LABELS
+  // ============================================================
   useEffect(() => {
     if (!mapRef.current) return;
     syncAllLayers(mapRef.current.getZoom(), { mode, isOnline, showLabels });
   }, [mode, isOnline, showLabels, syncAllLayers]);
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#000' }}>
+    <div style={{
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#000',
+    }}>
       <style>{MAP_STYLES}</style>
 
       <MapControls
         isOnline={isOnline}
-        mode={mode}             setMode={setMode}
+        mode={mode} setMode={setMode}
         showLabels={showLabels} setShowLabels={setShowLabels}
       />
 
+      {/* Contenedor DOM para Leaflet */}
       <div ref={mapContainerRef} style={{ flex: 1, width: '100%', height: '100%' }} />
 
-      {mapReady && mapRef.current && (
+      {/*
+        ✅ mapInstance (state) en lugar de mapRef.current (ref).
+        Los refs no deben leerse durante el render.
+        mapInstance es null hasta que Leaflet termina de inicializar.
+      */}
+      {mapInstance !== null && (
         <>
           {mode === 'radar' && (
-            <GridLayer map={mapRef.current} mx={props.mx} my={props.my} />
+            <GridLayer
+              map={mapInstance}
+              mx={mx} my={my}
+            />
           )}
 
           <MainElements
-            map={mapRef.current}
-            mx={props.mx} my={props.my}
-            tx={props.tx} ty={props.ty}
-            ox={props.ox} oy={props.oy}
-            zona={props.zona}
-            orientacion_base={props.orientacion_base}
-            rangoCarga={props.rangoCarga}
+            map={mapInstance}
+            mx={mx} my={my}
+            tx={tx} ty={ty}
+            ox={ox} oy={oy}
+            zona={zona}
+            orientacion_base={orientacion_base}
+            rangoCarga={rangoCarga}
           />
 
           <ImpactsLayer
-            map={mapRef.current}
-            mx={props.mx} my={props.my}
-            tx={props.tx} ty={props.ty}
-            zona={props.zona}
-            historial={props.historial}
+            map={mapInstance}
+            mx={mx} my={my}
+            tx={tx} ty={ty}
+            zona={zona}
+            historial={historial}
             showLabels={showLabels}
           />
         </>
       )}
 
-      {/* ── Indicador de estado ── */}
-      <div style={{
-        position:   'absolute', bottom: 8, left: 12, zIndex: 1000,
-        fontFamily: 'monospace', fontSize: '10px',
-        textShadow: '0 0 3px #000',
-        display:    'flex', gap: '12px', alignItems: 'center',
-        pointerEvents: 'none',
-      }}>
-        {mode === 'radar' && (
-          <span style={{ color: '#00ffcc' }}>GRID: 1KM</span>
-        )}
-        {mode === 'sat' && (
-          <span style={{ color: activeProvider === 'google' ? '#ffb300' : '#00ffcc' }}>
-            SRC: {activeProvider.toUpperCase()}
-          </span>
-        )}
-        <span style={{ color: isOnline ? '#00ff00' : '#ff4444' }}>
-          {isOnline ? '● ONLINE' : '● OFFLINE'}
-        </span>
-      </div>
+      <StatusBar mode={mode} isOnline={isOnline} activeProvider={activeProvider} />
     </div>
   );
 }

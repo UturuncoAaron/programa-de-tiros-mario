@@ -10,6 +10,42 @@ import { MissionLog } from '../components/fdc/MissionLog';
 import { EditReglajeModal } from '../components/fdc/EditReglajeModal';
 import { RightPanel, BottomPanel } from '../components/fdc/ResizablePanels';
 
+// ============================================================
+// TIPOS — forma exacta de los estados principales
+// Exportados para que SolutionDisplay, CorrectionPanel, etc. los reutilicen
+// ============================================================
+
+export interface InputsState {
+  mx: number; my: number; alt_pieza: number;
+  tx: number; ty: number; alt_obj: number;
+  ox: number; oy: number;
+  zona: number;
+  distObs: number; azObs: number; azObsUnit: string;
+  tipoGranada: string;
+  fecha_tiro: string;
+  meteo_vel: number; meteo_dir: number;
+  meteo_temp: number; meteo_pres: number;
+  temp_carga: number; dif_peso: number; dif_vel: number;
+  bloqueoMeteo: boolean;
+  usarVariacion: boolean;
+  orientacion_base: number;
+  carga_seleccionada: string;
+}
+
+export interface ResState {
+  azimutMils: number; azimutMag: number; distancia: number; variacion: number;
+  cmd_orient: string; cmd_deriva: string; cmd_elev: string; cmd_time: string; cmd_dist: string;
+  carga_rec: string; cargas_posibles: string[];
+  rango_min: number; rango_max: number;
+}
+
+export interface ReglajeState {
+  metodo: string;
+  dir: string; val_dir: number;
+  rango: string; val_rango: number;
+  imp_az: number; imp_dist: number; imp_unit: string;
+}
+
 export interface LogTiro {
   id: number;
   hora: string;
@@ -23,14 +59,17 @@ export interface LogTiro {
     zona: number;
   };
   fullData?: {
-    inputs: any;
-    results: any;
-    impacto?: { x: number, y: number };
-    rawReglaje?: any;
+    inputs:      InputsState;
+    results:     ResState;
+    impacto?:    { x: number; y: number };
+    rawReglaje?: ReglajeState;
   };
 }
 
-const INITIAL_INPUTS = {
+// ============================================================
+// ESTADO INICIAL
+// ============================================================
+const INITIAL_INPUTS: InputsState = {
   mx: 0, my: 0, alt_pieza: 0,
   tx: 0, ty: 0, alt_obj: 0,
   ox: 0, oy: 0,
@@ -47,41 +86,42 @@ const INITIAL_INPUTS = {
   carga_seleccionada: '-',
 };
 
-const INITIAL_RES = {
+const INITIAL_RES: ResState = {
   azimutMils: 0, azimutMag: 0, distancia: 0, variacion: 0,
   cmd_orient: '-', cmd_deriva: '-', cmd_elev: '-', cmd_time: '-', cmd_dist: '-',
-  carga_rec: 'OUT', cargas_posibles: [] as string[],
-  rango_min: 0, rango_max: 0
+  carga_rec: 'OUT', cargas_posibles: [],
+  rango_min: 0, rango_max: 0,
 };
 
-const INITIAL_REGLAJE = {
+const INITIAL_REGLAJE: ReglajeState = {
   metodo: 'apreciacion',
   dir: 'right', val_dir: 0,
-  rango: 'add', val_rango: 0,
-  imp_az: 0, imp_dist: 0, imp_unit: 'mils'
+  rango: 'add',  val_rango: 0,
+  imp_az: 0, imp_dist: 0, imp_unit: 'mils',
 };
 
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
 export function Calculadora() {
   const [faseMision, setFaseMision] = useState<'PREPARACION' | 'FUEGO'>(() => {
     return (localStorage.getItem('mision_estado') as 'PREPARACION' | 'FUEGO') || 'PREPARACION';
   });
   const [logAEditar, setLogAEditar] = useState<LogTiro | null>(null);
 
-  // Estados para controlar la visibilidad de los paneles
   const [panelInferiorOculto, setPanelInferiorOculto] = useState(false);
-  const [panelDerechoOculto, setPanelDerechoOculto] = useState(false);
+  const [panelDerechoOculto,  setPanelDerechoOculto]  = useState(false);
 
-  // Función maestra para el botón de Expandir Mapa
   const toggleModoMapa = () => {
     const todoOculto = panelInferiorOculto && panelDerechoOculto;
     setPanelInferiorOculto(!todoOculto);
     setPanelDerechoOculto(!todoOculto);
   };
 
-  const manejarGuardadoEdicion = (logIdAEditar: number, nuevoRawReglaje: any) => {
+  const manejarGuardadoEdicion = (logIdAEditar: number, nuevoRawReglaje: ReglajeState) => {
     if (!datosCongelados) return;
 
-    let nuevoAccAz = 0;
+    let nuevoAccAz   = 0;
     let nuevoAccDist = 0;
 
     const historialCronologico = [...historial].reverse();
@@ -89,53 +129,52 @@ export function Calculadora() {
     const historialRecalculado = historialCronologico.map(log => {
       if (log.tipo !== 'REGLAJE' || !log.fullData?.rawReglaje) return log;
 
-      const reglajeUsado = (log.id === logIdAEditar) ? nuevoRawReglaje : log.fullData.rawReglaje;
+      const reglajeUsado     = (log.id === logIdAEditar) ? nuevoRawReglaje : log.fullData.rawReglaje;
       const inputsHistoricos = log.fullData.inputs;
-      
-      let deltaAz = 0;
-      let deltaDist = 0;
-      let textoDetalle = log.detalle;
+
+      let deltaAz       = 0;
+      let deltaDist     = 0;
+      let textoDetalle  = log.detalle;
       let nuevoImpactoX = 0;
       let nuevoImpactoY = 0;
 
       if (reglajeUsado.metodo === 'apreciacion') {
-        const azBaseOA = Number(inputsHistoricos.azObs || 0);
+        const azBaseOA   = Number(inputsHistoricos.azObs   || 0);
         const distBaseOA = Number(inputsHistoricos.distObs || 0);
-        const valorDir = Math.abs(Number(reglajeUsado.val_dir || 0));
+        const valorDir   = Math.abs(Number(reglajeUsado.val_dir   || 0));
         const valorRango = Math.abs(Number(reglajeUsado.val_rango || 0));
-        
-        const signoDir = reglajeUsado.dir === 'left' ? -1 : 1;
-        const signoRango = reglajeUsado.rango === 'add' ? 1 : -1;
 
-        const nuevoAzOA = azBaseOA + (valorDir * signoDir);
-        const nuevaDistOA = distBaseOA + (valorRango * signoRango);
+        const signoDir   = reglajeUsado.dir   === 'left' ? -1 : 1;
+        const signoRango = reglajeUsado.rango === 'add'  ?  1 : -1;
 
-        let azRad = inputsHistoricos.azObsUnit === 'deg' ? nuevoAzOA * (Math.PI / 180) : nuevoAzOA * (Math.PI * 2 / 6400);
+        const nuevoAzOA   = azBaseOA   + (valorDir   * signoDir);
+        const nuevaDistOA = distBaseOA + (valorRango  * signoRango);
+
+        const azRad = inputsHistoricos.azObsUnit === 'deg'
+          ? nuevoAzOA * (Math.PI / 180)
+          : nuevoAzOA * (Math.PI * 2 / 6400);
 
         const bx = Number(inputsHistoricos.ox) + nuevaDistOA * Math.sin(azRad);
         const by = Number(inputsHistoricos.oy) + nuevaDistOA * Math.cos(azRad);
-        
+
         nuevoImpactoX = Math.round(bx);
         nuevoImpactoY = Math.round(by);
 
         const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
-
         if (geoEstallido) {
           let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz >  3200) diffAz -= 6400;
           if (diffAz < -3200) diffAz += 6400;
-
-          deltaAz = diffAz;
+          deltaAz   = diffAz;
           deltaDist = datosCongelados.distBase - geoEstallido.dist;
         }
 
         if (log.id === logIdAEditar) {
           textoDetalle = `APR: ${reglajeUsado.dir === 'left' ? 'Izq' : 'Der'} ${valorDir}, ${reglajeUsado.rango === 'add' ? 'Largo' : 'Corto'} ${valorRango} -> (Editado)`;
         }
-      } 
-      else {
-        let azObsRad = reglajeUsado.imp_unit === 'mils' 
-          ? Number(reglajeUsado.imp_az) * (Math.PI * 2 / 6400) 
+      } else {
+        const azObsRad = reglajeUsado.imp_unit === 'mils'
+          ? Number(reglajeUsado.imp_az) * (Math.PI * 2 / 6400)
           : Number(reglajeUsado.imp_az) * (Math.PI / 180);
 
         const bx = Number(inputsHistoricos.ox) + Number(reglajeUsado.imp_dist) * Math.sin(azObsRad);
@@ -145,13 +184,11 @@ export function Calculadora() {
         nuevoImpactoY = Math.round(by);
 
         const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
-        
         if (geoEstallido) {
           let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz >  3200) diffAz -= 6400;
           if (diffAz < -3200) diffAz += 6400;
-
-          deltaAz = diffAz;
+          deltaAz   = diffAz;
           deltaDist = datosCongelados.distBase - geoEstallido.dist;
         }
 
@@ -160,44 +197,47 @@ export function Calculadora() {
         }
       }
 
-      nuevoAccAz += deltaAz;
+      nuevoAccAz   += deltaAz;
       nuevoAccDist += deltaDist;
 
-      const distHistoricaCalculada = datosCongelados.distBase + nuevoAccDist;
-      const derivaHistoricaCalculada = (datosCongelados.derivaBase - nuevoAccAz + 6400) % 6400;
-      const azimutMagCalculado = (datosCongelados.azimutBaseMag + nuevoAccAz + 6400) % 6400;
-      const azimutMilsCalculado = (datosCongelados.azimutBaseGrid + nuevoAccAz + 6400) % 6400;
+      const distHistoricaCalculada   = datosCongelados.distBase       + nuevoAccDist;
+      const derivaHistoricaCalculada = (datosCongelados.derivaBase    - nuevoAccAz + 6400) % 6400;
+      const azimutMagCalculado       = (datosCongelados.azimutBaseMag  + nuevoAccAz + 6400) % 6400;
+      const azimutMilsCalculado      = (datosCongelados.azimutBaseGrid + nuevoAccAz + 6400) % 6400;
 
-      const dataMeteo = {
-        vel: inputsHistoricos.meteo_vel, dir: inputsHistoricos.meteo_dir, temp: inputsHistoricos.meteo_temp,
-        presion: inputsHistoricos.meteo_pres, difPeso: inputsHistoricos.dif_peso, difVel: inputsHistoricos.dif_vel,
-        temp_carga: inputsHistoricos.temp_carga, bloqueo: inputsHistoricos.bloqueoMeteo
+      const dataMeteo: DatosMeteo = {
+        vel: inputsHistoricos.meteo_vel, dir: inputsHistoricos.meteo_dir,
+        temp: inputsHistoricos.meteo_temp, presion: inputsHistoricos.meteo_pres,
+        difPeso: inputsHistoricos.dif_peso, difVel: inputsHistoricos.dif_vel,
+        temp_carga: inputsHistoricos.temp_carga, bloqueo: inputsHistoricos.bloqueoMeteo,
       };
-      
-      const azTiroHistorico = datosCongelados.azimutBaseGrid;
-      const solucion = calcularBalistica(distHistoricaCalculada, inputsHistoricos.tipoGranada, log.fullData.results.carga_rec, dataMeteo, azTiroHistorico);
 
-      const nuevosResults = {
-        ...log.fullData.results,
-        distancia: distHistoricaCalculada,
+      const solucion = calcularBalistica(
+        distHistoricaCalculada, inputsHistoricos.tipoGranada,
+        log.fullData!.results.carga_rec, dataMeteo, datosCongelados.azimutBaseGrid,
+      );
+
+      const nuevosResults: ResState = {
+        ...log.fullData!.results,
+        distancia:  distHistoricaCalculada,
         cmd_deriva: Math.round(derivaHistoricaCalculada).toString().padStart(4, '0'),
-        cmd_dist: Math.round(distHistoricaCalculada).toString(),
-        cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
-        cmd_time: solucion.tiempo,
-        azimutMag: azimutMagCalculado,
-        azimutMils: azimutMilsCalculado
+        cmd_dist:   Math.round(distHistoricaCalculada).toString(),
+        cmd_elev:   solucion.status === 'OK' ? Math.round(solucion.elev).toString() : '-',
+        cmd_time:   solucion.tiempo,
+        azimutMag:  azimutMagCalculado,
+        azimutMils: azimutMilsCalculado,
       };
 
       return {
         ...log,
         detalle: textoDetalle,
         coords: `Sol: Dist ${Math.round(distHistoricaCalculada)}`,
-        fullData: { 
-          ...log.fullData, 
+        fullData: {
+          ...log.fullData!,
           rawReglaje: reglajeUsado,
-          results: nuevosResults,
-          impacto: { x: nuevoImpactoX, y: nuevoImpactoY }
-        }
+          results:    nuevosResults,
+          impacto:    { x: nuevoImpactoX, y: nuevoImpactoY },
+        },
       };
     });
 
@@ -207,34 +247,35 @@ export function Calculadora() {
   };
 
   const [datosCongelados, setDatosCongelados] = useState<{
-    derivaBase: number,
-    distBase: number,
-    variacionUsada: number,
-    azimutBaseMag: number,
-    azimutBaseGrid: number
+    derivaBase:     number;
+    distBase:       number;
+    variacionUsada: number;
+    azimutBaseMag:  number;
+    azimutBaseGrid: number;
   } | null>(() => {
     const saved = localStorage.getItem('mision_base');
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [correccionAcumulada, setCorreccionAcumulada] = useState<{ az: number, dist: number }>(() => {
+  const [correccionAcumulada, setCorreccionAcumulada] = useState<{ az: number; dist: number }>(() => {
     const saved = localStorage.getItem('mision_corr');
     return saved ? JSON.parse(saved) : { az: 0, dist: 0 };
   });
 
   const [isFiring, setIsFiring] = useState(false);
-  const [mapId, setMapId] = useState(0);
-  const [inputs, setInputs] = useState(() => {
-    const savedInputs = localStorage.getItem('mision_inputs');
-    return savedInputs ? { ...INITIAL_INPUTS, ...JSON.parse(savedInputs) } : INITIAL_INPUTS;
+  const [mapId,    setMapId]    = useState(0);
+
+  const [inputs, setInputs] = useState<InputsState>(() => {
+    const saved = localStorage.getItem('mision_inputs');
+    return saved ? { ...INITIAL_INPUTS, ...JSON.parse(saved) } : INITIAL_INPUTS;
   });
 
-  const [reglaje, setReglaje] = useState(() => {
+  const [reglaje, setReglaje] = useState<ReglajeState>(() => {
     const saved = localStorage.getItem('mision_reglaje');
     return saved ? JSON.parse(saved) : INITIAL_REGLAJE;
   });
 
-  const [res, setRes] = useState(() => {
+  const [res, setRes] = useState<ResState>(() => {
     const saved = localStorage.getItem('mision_res');
     return saved ? JSON.parse(saved) : INITIAL_RES;
   });
@@ -245,33 +286,38 @@ export function Calculadora() {
   });
 
   const [contador, setContador] = useState(() => {
-    const savedLogs = localStorage.getItem('mision_logs');
-    return savedLogs ? JSON.parse(savedLogs).length + 1 : 1;
+    const saved = localStorage.getItem('mision_logs');
+    return saved ? JSON.parse(saved).length + 1 : 1;
   });
 
   const lastGranada = useRef(inputs.tipoGranada);
 
-  useEffect(() => { localStorage.setItem('mision_inputs', JSON.stringify(inputs)); }, [inputs]);
-  useEffect(() => { localStorage.setItem('mision_res', JSON.stringify(res)); }, [res]);
-  useEffect(() => { localStorage.setItem('mision_reglaje', JSON.stringify(reglaje)); }, [reglaje]);
-  useEffect(() => { localStorage.setItem('mision_logs', JSON.stringify(historial)); }, [historial]);
-  useEffect(() => { localStorage.setItem('mision_estado', faseMision); }, [faseMision]);
+  // ── Persistencia localStorage ──────────────────────────────
+  useEffect(() => { localStorage.setItem('mision_inputs',  JSON.stringify(inputs));    }, [inputs]);
+  useEffect(() => { localStorage.setItem('mision_res',     JSON.stringify(res));       }, [res]);
+  useEffect(() => { localStorage.setItem('mision_reglaje', JSON.stringify(reglaje));   }, [reglaje]);
+  useEffect(() => { localStorage.setItem('mision_logs',    JSON.stringify(historial)); }, [historial]);
+  useEffect(() => { localStorage.setItem('mision_estado',  faseMision);               }, [faseMision]);
   useEffect(() => {
     if (datosCongelados) localStorage.setItem('mision_base', JSON.stringify(datosCongelados));
-    else localStorage.removeItem('mision_base');
+    else                 localStorage.removeItem('mision_base');
   }, [datosCongelados]);
   useEffect(() => { localStorage.setItem('mision_corr', JSON.stringify(correccionAcumulada)); }, [correccionAcumulada]);
 
+  // ── Reset carga al cambiar tipo de granada ─────────────────
+  // Justificación: sincroniza carga_seleccionada cuando cambia tipoGranada.
+  // No puede hacerse en un manejador porque el cambio puede venir de fuera.
   useEffect(() => {
     if (inputs.tipoGranada !== lastGranada.current) {
-      setInputs((prev: any) => ({ ...prev, carga_seleccionada: '-' }));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInputs(prev => ({ ...prev, carga_seleccionada: '-' }));
       lastGranada.current = inputs.tipoGranada;
     }
   }, [inputs.tipoGranada]);
 
   const handleNuevaMision = () => {
     if (historial.length > 0) {
-      if (!window.confirm("⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo el historial y configuraciones.")) return;
+      if (!window.confirm('⚠ ¿FINALIZAR MISIÓN?\n\nSe borrará todo el historial y configuraciones.')) return;
     }
     localStorage.clear();
     setHistorial([]);
@@ -287,16 +333,16 @@ export function Calculadora() {
   };
 
   const eliminarLog = (idABorrar: number) => {
-    if (!window.confirm("¿Borrar este registro del historial?")) return;
+    if (!window.confirm('¿Borrar este registro del historial?')) return;
 
-    const historialFiltrado = historial.filter((l: LogTiro) => l.id !== idABorrar);
+    const historialFiltrado = historial.filter(l => l.id !== idABorrar);
 
     if (!datosCongelados) {
       setHistorial(historialFiltrado);
       return;
     }
 
-    let nuevoAccAz = 0;
+    let nuevoAccAz   = 0;
     let nuevoAccDist = 0;
 
     const historialCronologico = [...historialFiltrado].reverse();
@@ -304,48 +350,47 @@ export function Calculadora() {
     const historialRecalculado = historialCronologico.map(log => {
       if (log.tipo !== 'REGLAJE' || !log.fullData?.rawReglaje) return log;
 
-      const reglajeUsado = log.fullData.rawReglaje;
+      const reglajeUsado     = log.fullData.rawReglaje;
       const inputsHistoricos = log.fullData.inputs;
-      
-      let deltaAz = 0;
-      let deltaDist = 0;
+
+      let deltaAz       = 0;
+      let deltaDist     = 0;
       let nuevoImpactoX = 0;
       let nuevoImpactoY = 0;
 
       if (reglajeUsado.metodo === 'apreciacion') {
-        const azBaseOA = Number(inputsHistoricos.azObs || 0);
+        const azBaseOA   = Number(inputsHistoricos.azObs   || 0);
         const distBaseOA = Number(inputsHistoricos.distObs || 0);
-        const valorDir = Math.abs(Number(reglajeUsado.val_dir || 0));
+        const valorDir   = Math.abs(Number(reglajeUsado.val_dir   || 0));
         const valorRango = Math.abs(Number(reglajeUsado.val_rango || 0));
-        
-        const signoDir = reglajeUsado.dir === 'left' ? -1 : 1;
-        const signoRango = reglajeUsado.rango === 'add' ? 1 : -1;
 
-        const nuevoAzOA = azBaseOA + (valorDir * signoDir);
-        const nuevaDistOA = distBaseOA + (valorRango * signoRango);
+        const signoDir   = reglajeUsado.dir   === 'left' ? -1 : 1;
+        const signoRango = reglajeUsado.rango === 'add'  ?  1 : -1;
 
-        let azRad = inputsHistoricos.azObsUnit === 'deg' ? nuevoAzOA * (Math.PI / 180) : nuevoAzOA * (Math.PI * 2 / 6400);
+        const nuevoAzOA   = azBaseOA   + (valorDir   * signoDir);
+        const nuevaDistOA = distBaseOA + (valorRango  * signoRango);
+
+        const azRad = inputsHistoricos.azObsUnit === 'deg'
+          ? nuevoAzOA * (Math.PI / 180)
+          : nuevoAzOA * (Math.PI * 2 / 6400);
 
         const bx = Number(inputsHistoricos.ox) + nuevaDistOA * Math.sin(azRad);
         const by = Number(inputsHistoricos.oy) + nuevaDistOA * Math.cos(azRad);
-        
+
         nuevoImpactoX = Math.round(bx);
         nuevoImpactoY = Math.round(by);
 
         const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
-
         if (geoEstallido) {
           let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz >  3200) diffAz -= 6400;
           if (diffAz < -3200) diffAz += 6400;
-
-          deltaAz = diffAz;
+          deltaAz   = diffAz;
           deltaDist = datosCongelados.distBase - geoEstallido.dist;
         }
-      } 
-      else {
-        let azObsRad = reglajeUsado.imp_unit === 'mils' 
-          ? Number(reglajeUsado.imp_az) * (Math.PI * 2 / 6400) 
+      } else {
+        const azObsRad = reglajeUsado.imp_unit === 'mils'
+          ? Number(reglajeUsado.imp_az) * (Math.PI * 2 / 6400)
           : Number(reglajeUsado.imp_az) * (Math.PI / 180);
 
         const bx = Number(inputsHistoricos.ox) + Number(reglajeUsado.imp_dist) * Math.sin(azObsRad);
@@ -355,53 +400,54 @@ export function Calculadora() {
         nuevoImpactoY = Math.round(by);
 
         const geoEstallido = calcularGeometria(inputsHistoricos.mx, inputsHistoricos.my, bx, by);
-        
         if (geoEstallido) {
           let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-          if (diffAz > 3200) diffAz -= 6400;
+          if (diffAz >  3200) diffAz -= 6400;
           if (diffAz < -3200) diffAz += 6400;
-
-          deltaAz = diffAz;
+          deltaAz   = diffAz;
           deltaDist = datosCongelados.distBase - geoEstallido.dist;
         }
       }
 
-      nuevoAccAz += deltaAz;
+      nuevoAccAz   += deltaAz;
       nuevoAccDist += deltaDist;
 
-      const distHistoricaCalculada = datosCongelados.distBase + nuevoAccDist;
-      const derivaHistoricaCalculada = (datosCongelados.derivaBase - nuevoAccAz + 6400) % 6400;
-      const azimutMagCalculado = (datosCongelados.azimutBaseMag + nuevoAccAz + 6400) % 6400;
-      const azimutMilsCalculado = (datosCongelados.azimutBaseGrid + nuevoAccAz + 6400) % 6400;
-      
-      const dataMeteo = {
-        vel: inputsHistoricos.meteo_vel, dir: inputsHistoricos.meteo_dir, temp: inputsHistoricos.meteo_temp,
-        presion: inputsHistoricos.meteo_pres, difPeso: inputsHistoricos.dif_peso, difVel: inputsHistoricos.dif_vel,
-        temp_carga: inputsHistoricos.temp_carga, bloqueo: inputsHistoricos.bloqueoMeteo
-      };
-      
-      const azTiroHistorico = datosCongelados.azimutBaseGrid;
-      const solucion = calcularBalistica(distHistoricaCalculada, inputsHistoricos.tipoGranada, log.fullData.results.carga_rec, dataMeteo, azTiroHistorico);
+      const distHistoricaCalculada   = datosCongelados.distBase       + nuevoAccDist;
+      const derivaHistoricaCalculada = (datosCongelados.derivaBase    - nuevoAccAz + 6400) % 6400;
+      const azimutMagCalculado       = (datosCongelados.azimutBaseMag  + nuevoAccAz + 6400) % 6400;
+      const azimutMilsCalculado      = (datosCongelados.azimutBaseGrid + nuevoAccAz + 6400) % 6400;
 
-      const nuevosResults = {
-        ...log.fullData.results,
-        distancia: distHistoricaCalculada,
+      const dataMeteo: DatosMeteo = {
+        vel: inputsHistoricos.meteo_vel, dir: inputsHistoricos.meteo_dir,
+        temp: inputsHistoricos.meteo_temp, presion: inputsHistoricos.meteo_pres,
+        difPeso: inputsHistoricos.dif_peso, difVel: inputsHistoricos.dif_vel,
+        temp_carga: inputsHistoricos.temp_carga, bloqueo: inputsHistoricos.bloqueoMeteo,
+      };
+
+      const solucion = calcularBalistica(
+        distHistoricaCalculada, inputsHistoricos.tipoGranada,
+        log.fullData!.results.carga_rec, dataMeteo, datosCongelados.azimutBaseGrid,
+      );
+
+      const nuevosResults: ResState = {
+        ...log.fullData!.results,
+        distancia:  distHistoricaCalculada,
         cmd_deriva: Math.round(derivaHistoricaCalculada).toString().padStart(4, '0'),
-        cmd_dist: Math.round(distHistoricaCalculada).toString(),
-        cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
-        cmd_time: solucion.tiempo,
-        azimutMag: azimutMagCalculado,
-        azimutMils: azimutMilsCalculado
+        cmd_dist:   Math.round(distHistoricaCalculada).toString(),
+        cmd_elev:   solucion.status === 'OK' ? Math.round(solucion.elev).toString() : '-',
+        cmd_time:   solucion.tiempo,
+        azimutMag:  azimutMagCalculado,
+        azimutMils: azimutMilsCalculado,
       };
 
       return {
         ...log,
         coords: `Sol: Dist ${Math.round(distHistoricaCalculada)}`,
-        fullData: { 
-          ...log.fullData, 
+        fullData: {
+          ...log.fullData!,
           results: nuevosResults,
-          impacto: { x: nuevoImpactoX, y: nuevoImpactoY }
-        }
+          impacto: { x: nuevoImpactoX, y: nuevoImpactoY },
+        },
       };
     });
 
@@ -411,123 +457,111 @@ export function Calculadora() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value, type } = e.target;
-    let val: any = value;
-    if (type === 'number') val = parseFloat(value) || 0;
+    let val: string | number | boolean = value;
+    if (type === 'number')   val = parseFloat(value) || 0;
     if (type === 'checkbox') val = (e.target as HTMLInputElement).checked;
+    if (id === 'zona')       val = parseInt(value);
 
-    if (id === 'zona') {
-      val = parseInt(value);
-    }
-
-    if (id === 'check_bloqueo') setInputs((prev: any) => ({ ...prev, bloqueoMeteo: val }));
-    else if (id === 'check_variacion') setInputs((prev: any) => ({ ...prev, usarVariacion: val }));
-    else {
-      setInputs((prev: any) => ({ ...prev, [id]: val }));
-    }
+    if      (id === 'check_bloqueo')   setInputs(prev => ({ ...prev, bloqueoMeteo:  val as boolean }));
+    else if (id === 'check_variacion') setInputs(prev => ({ ...prev, usarVariacion: val as boolean }));
+    else                               setInputs(prev => ({ ...prev, [id]: val }));
   };
 
   const handleReglaje = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value, type } = e.target;
-    let val: any = value;
-    if (type === 'number') val = parseFloat(value) || 0;
-    setReglaje((prev: any) => ({ ...prev, [id]: val }));
-  }
+    const val: string | number = type === 'number' ? parseFloat(value) || 0 : value;
+    setReglaje(prev => ({ ...prev, [id]: val }));
+  };
 
+  // ── TX/TY desde observador avanzado ───────────────────────
+  // Justificación: estado derivado calculado reactivamente.
+  // Patrón aceptado en React 18 para coordenadas calculadas.
   useEffect(() => {
     if (faseMision === 'FUEGO') return;
     if (inputs.distObs > 0 && inputs.ox > 0 && inputs.oy > 0) {
-      let rad = (inputs.azObsUnit === 'mils') ? inputs.azObs * (Math.PI * 2 / 6400) : inputs.azObs * (Math.PI / 180);
-      setInputs((prev: any) => ({
+      const rad = inputs.azObsUnit === 'mils'
+        ? inputs.azObs * (Math.PI * 2 / 6400)
+        : inputs.azObs * (Math.PI / 180);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInputs(prev => ({
         ...prev,
         tx: Math.round(inputs.ox + inputs.distObs * Math.sin(rad)),
-        ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad))
+        ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad)),
       }));
     }
   }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, faseMision]);
 
+  // ── Variación magnética (WMM) ─────────────────────────────
+  // Justificación: llama a librería geomagnética (sistema externo).
   useEffect(() => {
     if (faseMision === 'PREPARACION') {
       const nuevaVariacionMils = calcularVariacionWMM(inputs.mx, inputs.my, inputs.zona);
-      setRes((prev: any) => ({
-        ...prev,
-        variacion: nuevaVariacionMils
-      }));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRes(prev => ({ ...prev, variacion: nuevaVariacionMils }));
     }
   }, [inputs.mx, inputs.my, inputs.zona, faseMision]);
 
+  // ── Cálculo balístico principal ───────────────────────────
+  // Justificación: es el propósito central del componente.
+  // Recalcula la solución completa de tiro ante cualquier cambio de input.
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
 
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
     if (!geo) return;
 
-    let distCalculo = 0;
-    let derivaCalculo = 0;
+    let distCalculo      = 0;
+    let derivaCalculo    = 0;
     let variacionDisplay = 0;
     let azimutMagDisplay = 0;
 
     if (faseMision === 'PREPARACION' || !datosCongelados) {
       const varMilsLive = inputs.usarVariacion ? res.variacion : 0;
-      azimutMagDisplay = geo.azMils - varMilsLive;
-      derivaCalculo = (inputs.orientacion_base - azimutMagDisplay + 6400) % 6400;
-      distCalculo = geo.dist;
-      variacionDisplay = varMilsLive;
-    }
-    else {
-      variacionDisplay = datosCongelados.variacionUsada;
-      derivaCalculo = (datosCongelados.derivaBase - correccionAcumulada.az + 6400) % 6400;
-      distCalculo = datosCongelados.distBase + correccionAcumulada.dist;
-      azimutMagDisplay = (datosCongelados.azimutBaseMag + correccionAcumulada.az + 6400) % 6400;
+      azimutMagDisplay  = geo.azMils - varMilsLive;
+      derivaCalculo     = (inputs.orientacion_base - azimutMagDisplay + 6400) % 6400;
+      distCalculo       = geo.dist;
+      variacionDisplay  = varMilsLive;
+    } else {
+      variacionDisplay  = datosCongelados.variacionUsada;
+      derivaCalculo     = (datosCongelados.derivaBase    - correccionAcumulada.az   + 6400) % 6400;
+      distCalculo       = datosCongelados.distBase       + correccionAcumulada.dist;
+      azimutMagDisplay  = (datosCongelados.azimutBaseMag + correccionAcumulada.az   + 6400) % 6400;
     }
 
     const dataMeteo: DatosMeteo = {
       vel: inputs.meteo_vel, dir: inputs.meteo_dir, temp: inputs.meteo_temp,
       presion: inputs.meteo_pres, difPeso: inputs.dif_peso, difVel: inputs.dif_vel,
-      temp_carga: inputs.temp_carga, bloqueo: inputs.bloqueoMeteo
+      temp_carga: inputs.temp_carga, bloqueo: inputs.bloqueoMeteo,
     };
 
-    const granada = ARSENAL[inputs.tipoGranada];
+    const granada        = ARSENAL[inputs.tipoGranada];
     const cargasPosibles: string[] = [];
-    
-    let candidatos: { id: string, uso: number, buffer: number }[] = [];
-    
+    const candidatos: { id: string; uso: number; buffer: number }[] = [];
     let cargaRecomendada = '-';
     let rMin = 0, rMax = 0;
 
     if (granada) {
       for (const cStr in granada.rangos) {
         const r = granada.rangos[parseInt(cStr)];
-        
         if (distCalculo >= r.min && distCalculo <= r.max) {
           cargasPosibles.push(cStr);
-          
-          const uso = distCalculo / r.max; 
-          const buffer = r.max - distCalculo;
-
-          candidatos.push({ id: cStr, uso, buffer });
+          candidatos.push({ id: cStr, uso: distCalculo / r.max, buffer: r.max - distCalculo });
         }
       }
-
       if (candidatos.length > 0) {
         candidatos.sort((a, b) => {
           const aTieneBuffer = a.buffer >= 800;
           const bTieneBuffer = b.buffer >= 800;
-
-          if (aTieneBuffer && !bTieneBuffer) return -1;
-          if (!aTieneBuffer && bTieneBuffer) return 1;
-
-          const diffA = Math.abs(a.uso - 0.65);
-          const diffB = Math.abs(b.uso - 0.65);
-
-          return diffA - diffB;
+          if ( aTieneBuffer && !bTieneBuffer) return -1;
+          if (!aTieneBuffer &&  bTieneBuffer) return  1;
+          return Math.abs(a.uso - 0.65) - Math.abs(b.uso - 0.65);
         });
-
         cargaRecomendada = candidatos[0].id;
       }
     }
 
     const cargaFinal = (inputs.carga_seleccionada !== '-' && cargasPosibles.includes(inputs.carga_seleccionada))
-      ? inputs.carga_seleccionada 
+      ? inputs.carga_seleccionada
       : cargaRecomendada;
 
     if (granada && cargaFinal !== '-' && granada.rangos[parseInt(cargaFinal)]) {
@@ -539,44 +573,47 @@ export function Calculadora() {
       ? datosCongelados.azimutBaseGrid
       : geo.azMils;
 
-    const solucion = calcularBalistica(distCalculo, inputs.tipoGranada, cargaFinal, dataMeteo, azTiroReal);
-
+    const solucion    = calcularBalistica(distCalculo, inputs.tipoGranada, cargaFinal, dataMeteo, azTiroReal);
     const derivaFinal = (derivaCalculo + (solucion.corrDeriva || 0) + 6400) % 6400;
 
-    setRes((prev: any) => ({
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRes(prev => ({
       ...prev,
-      azimutMils: geo.azMils,
-      azimutMag: azimutMagDisplay,
-      distancia: distCalculo,
-      variacion: variacionDisplay,
-      cmd_orient: inputs.orientacion_base.toString(),
-      cmd_deriva: Math.round(derivaFinal).toString().padStart(4, '0'),
-      cmd_elev: solucion.status === "OK" ? Math.round(solucion.elev).toString() : "-",
-      cmd_time: solucion.tiempo,
-      cmd_dist: Math.round(distCalculo).toString(),
-      carga_rec: cargaRecomendada, cargas_posibles: cargasPosibles,
-      rango_min: rMin, rango_max: rMax
+      azimutMils:      geo.azMils,
+      azimutMag:       azimutMagDisplay,
+      distancia:       distCalculo,
+      variacion:       variacionDisplay,
+      cmd_orient:      inputs.orientacion_base.toString(),
+      cmd_deriva:      Math.round(derivaFinal).toString().padStart(4, '0'),
+      cmd_elev:        solucion.status === 'OK' ? Math.round(solucion.elev).toString() : '-',
+      cmd_time:        solucion.tiempo,
+      cmd_dist:        Math.round(distCalculo).toString(),
+      carga_rec:       cargaRecomendada,
+      cargas_posibles: cargasPosibles,
+      rango_min:       rMin,
+      rango_max:       rMax,
     }));
-
   }, [inputs, faseMision, datosCongelados, correccionAcumulada, res.variacion]);
 
-  const guardarLog = (tipo: 'SALVA' | 'REGLAJE', detalle: string, coords: string, dataOverride?: any) => {
+  const guardarLog = (
+    tipo: 'SALVA' | 'REGLAJE',
+    detalle: string,
+    coords: string,
+    dataOverride?: LogTiro['fullData'],
+  ) => {
     const nuevoLog: LogTiro = {
-      id: contador,
+      id:   contador,
       hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       tipo, detalle, coords,
       snapshot: {
         tx: inputs.tx, ty: inputs.ty,
         ox: inputs.ox, oy: inputs.oy,
         usarVariacion: inputs.usarVariacion,
-        zona: inputs.zona
+        zona: inputs.zona,
       },
-      fullData: dataOverride ? dataOverride : {
-        inputs: { ...inputs },
-        results: { ...res }
-      }
+      fullData: dataOverride ?? { inputs: { ...inputs }, results: { ...res } },
     };
-    setHistorial((prev: any) => [nuevoLog, ...prev]);
+    setHistorial(prev => [nuevoLog, ...prev]);
     setContador((c: number) => c + 1);
   };
 
@@ -587,15 +624,14 @@ export function Calculadora() {
       const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
       if (geo) {
         const varMils = inputs.usarVariacion ? res.variacion : 0;
-        const azMag = geo.azMils - varMils;
+        const azMag   = geo.azMils - varMils;
         const derBase = (inputs.orientacion_base - azMag + 6400) % 6400;
-
         setDatosCongelados({
-          derivaBase: derBase,
-          distBase: geo.dist,
+          derivaBase:     derBase,
+          distBase:       geo.dist,
           variacionUsada: varMils,
-          azimutBaseMag: azMag,
-          azimutBaseGrid: geo.azMils
+          azimutBaseMag:  azMag,
+          azimutBaseGrid: geo.azMils,
         });
         setFaseMision('FUEGO');
       }
@@ -604,38 +640,31 @@ export function Calculadora() {
     setIsFiring(true);
     const detalleTiro = `Carga ${inputs.carga_seleccionada === '-' ? res.carga_rec : inputs.carga_seleccionada} | Elev ${res.cmd_elev} | Deriva ${res.cmd_deriva}`;
     guardarLog('SALVA', detalleTiro, `Dist: ${res.cmd_dist}`);
-
-    setTimeout(() => {
-      setIsFiring(false);
-    }, 1500);
+    setTimeout(() => setIsFiring(false), 1500);
   };
 
   const aplicarCorreccion = () => {
-    let deltaAz = 0;
-    let deltaDist = 0;
-    let detalleLog = "";
-    let impactoX = 0;
-    let impactoY = 0;
+    let deltaAz    = 0;
+    let deltaDist  = 0;
+    let detalleLog = '';
+    let impactoX   = 0;
+    let impactoY   = 0;
 
     if (reglaje.metodo === 'apreciacion') {
-      const azBaseOA = Number(inputs.azObs || 0);
+      const azBaseOA   = Number(inputs.azObs   || 0);
       const distBaseOA = Number(inputs.distObs || 0);
-
-      const valorDir = Math.abs(Number(reglaje.val_dir || 0));
+      const valorDir   = Math.abs(Number(reglaje.val_dir   || 0));
       const valorRango = Math.abs(Number(reglaje.val_rango || 0));
 
-      const signoDir = reglaje.dir === 'left' ? -1 : 1;
-      const signoRango = reglaje.rango === 'add' ? 1 : -1;
+      const signoDir   = reglaje.dir   === 'left' ? -1 : 1;
+      const signoRango = reglaje.rango === 'add'  ?  1 : -1;
 
-      const nuevoAzOA = azBaseOA + (valorDir * signoDir);
-      const nuevaDistOA = distBaseOA + (valorRango * signoRango);
+      const nuevoAzOA   = azBaseOA   + (valorDir   * signoDir);
+      const nuevaDistOA = distBaseOA + (valorRango  * signoRango);
 
-      let azRad = 0;
-      if (inputs.azObsUnit === 'deg') {
-        azRad = nuevoAzOA * (Math.PI / 180);
-      } else {
-        azRad = nuevoAzOA * (Math.PI * 2 / 6400);
-      }
+      const azRad = inputs.azObsUnit === 'deg'
+        ? nuevoAzOA * (Math.PI / 180)
+        : nuevoAzOA * (Math.PI * 2 / 6400);
 
       const bx = Number(inputs.ox) + nuevaDistOA * Math.sin(azRad);
       const by = Number(inputs.oy) + nuevaDistOA * Math.cos(azRad);
@@ -644,30 +673,23 @@ export function Calculadora() {
       impactoY = Math.round(by);
 
       const geoEstallido = calcularGeometria(inputs.mx, inputs.my, bx, by);
-
       if (geoEstallido && datosCongelados) {
         let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-        if (diffAz > 3200) diffAz -= 6400;
+        if (diffAz >  3200) diffAz -= 6400;
         if (diffAz < -3200) diffAz += 6400;
-
-        deltaAz = diffAz;
+        deltaAz   = diffAz;
         deltaDist = datosCongelados.distBase - geoEstallido.dist;
       }
 
       detalleLog = `APR: ${reglaje.dir === 'left' ? 'Izq' : 'Der'} ${valorDir}, ${reglaje.rango === 'add' ? 'Largo' : 'Corto'} ${valorRango} -> (Nuevos OA: ${nuevoAzOA}, ${nuevaDistOA})`;
-
-      setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0 }));
-    }
-    else {
-      if (!datosCongelados) return;
+      setReglaje(prev => ({ ...prev, val_dir: 0, val_rango: 0 }));
+    } else {
+      if (!datosCongelados)       return;
       if (reglaje.imp_dist === 0) return;
 
-      let azObsRad = 0;
-      if (reglaje.imp_unit === 'mils') {
-        azObsRad = reglaje.imp_az * (Math.PI * 2 / 6400);
-      } else {
-        azObsRad = reglaje.imp_az * (Math.PI / 180);
-      }
+      const azObsRad = reglaje.imp_unit === 'mils'
+        ? reglaje.imp_az * (Math.PI * 2 / 6400)
+        : reglaje.imp_az * (Math.PI / 180);
 
       const bx = inputs.ox + reglaje.imp_dist * Math.sin(azObsRad);
       const by = inputs.oy + reglaje.imp_dist * Math.cos(azObsRad);
@@ -679,47 +701,52 @@ export function Calculadora() {
       if (!geoEstallido) return;
 
       let diffAz = datosCongelados.azimutBaseGrid - geoEstallido.azMils;
-      if (diffAz > 3200) diffAz -= 6400;
+      if (diffAz >  3200) diffAz -= 6400;
       if (diffAz < -3200) diffAz += 6400;
-
-      const diffDist = datosCongelados.distBase - geoEstallido.dist;
-
-      deltaAz = diffAz;
-      deltaDist = diffDist;
-
+      deltaAz   = diffAz;
+      deltaDist = datosCongelados.distBase - geoEstallido.dist;
       detalleLog = `MED: Estallido a ${Math.round(geoEstallido.dist)}m (Az ${Math.round(geoEstallido.azMils)})`;
     }
 
-    const nuevoAz = correccionAcumulada.az + deltaAz;
+    const nuevoAz   = correccionAcumulada.az   + deltaAz;
     const nuevoDist = correccionAcumulada.dist + deltaDist;
 
     setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
 
-    const azMagActualizado = datosCongelados ? (datosCongelados.azimutBaseMag + nuevoAz + 6400) % 6400 : res.azimutMag;
+    const azMagActualizado  = datosCongelados ? (datosCongelados.azimutBaseMag  + nuevoAz + 6400) % 6400 : res.azimutMag;
     const azGridActualizado = datosCongelados ? (datosCongelados.azimutBaseGrid + nuevoAz + 6400) % 6400 : res.azimutMils;
 
-    const logResultOverride = {
+    const logResultOverride: ResState = {
       ...res,
-      distancia: datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
-      cmd_deriva: datosCongelados ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0') : '-',
-      azimutMag: azMagActualizado,
-      azimutMils: azGridActualizado
+      distancia:  datosCongelados ? datosCongelados.distBase + nuevoDist : 0,
+      cmd_deriva: datosCongelados
+        ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400).toString().padStart(4, '0')
+        : '-',
+      azimutMag:  azMagActualizado,
+      azimutMils: azGridActualizado,
     };
 
-    const extraData: any = {
-      inputs: { ...inputs },
-      results: logResultOverride,
-      rawReglaje: { ...reglaje }
+    const extraData: LogTiro['fullData'] = {
+      inputs:     { ...inputs },
+      results:    logResultOverride,
+      rawReglaje: { ...reglaje },
     };
     if (impactoX > 0 && impactoY > 0) {
       extraData.impacto = { x: impactoX, y: impactoY };
     }
 
-    guardarLog('REGLAJE', detalleLog, `Sol: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`, extraData);
+    guardarLog(
+      'REGLAJE', detalleLog,
+      `Sol: Dist ${Math.round(datosCongelados ? datosCongelados.distBase + nuevoDist : 0)}`,
+      extraData,
+    );
 
-    setReglaje((prev: any) => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
+    setReglaje(prev => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="laptop-bezel" style={{ width: '100%', height: '100%', border: 'none' }}>
       <div className="screen-container">
@@ -729,23 +756,15 @@ export function Calculadora() {
             <h1>MORTEROS-MARIA // CALCULADORA {faseMision === 'FUEGO' && <span className="text-blink">[EN MISIÓN]</span>}</h1>
           </div>
           <div className="header-right">
-            
-            {/* BOTÓN MAESTRO DE CONTROL DE PANELES */}
             <button
               onClick={toggleModoMapa}
               style={{
-                backgroundColor: '#060d0f',
-                color: '#00e5ff',
-                border: '1px solid #00e5ff',
-                padding: '4px 10px',
-                fontSize: '0.7rem',
-                marginRight: '15px',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                transition: 'all 0.2s'
+                backgroundColor: '#060d0f', color: '#00e5ff', border: '1px solid #00e5ff',
+                padding: '4px 10px', fontSize: '0.7rem', marginRight: '15px',
+                cursor: 'pointer', fontFamily: 'monospace', transition: 'all 0.2s',
               }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(0, 229, 255, 0.1)'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#060d0f'}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(0, 229, 255, 0.1)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#060d0f')}
             >
               {panelInferiorOculto && panelDerechoOculto ? '[+] MOSTRAR PANELES' : '[-] EXPANDIR MAPA'}
             </button>
@@ -757,12 +776,11 @@ export function Calculadora() {
             >
               [ X ] FIN MISIÓN
             </button>
+
             <div className="mini-control">
               <label>MUNICIÓN</label>
               <select
-                id="tipoGranada"
-                value={inputs.tipoGranada}
-                onChange={handleChange}
+                id="tipoGranada" value={inputs.tipoGranada} onChange={handleChange}
                 style={{ maxWidth: '180px', pointerEvents: 'auto' }}
                 disabled={faseMision === 'FUEGO'}
               >
@@ -776,11 +794,9 @@ export function Calculadora() {
           </div>
         </header>
 
-        {/* ── LAYOUT PRINCIPAL REFACTORIZADO ── */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
-          
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-            {/* ZONA DEL MAPA */}
+
             <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
               <TacticalMap
                 key={mapId}
@@ -794,11 +810,10 @@ export function Calculadora() {
               />
             </div>
 
-            {/* PANEL INFERIOR CONTROLADO */}
-            <BottomPanel 
+            <BottomPanel
               initialHeight={220} minHeight={120} maxHeight={420}
               collapsed={panelInferiorOculto}
-              onToggle={() => setPanelInferiorOculto(!panelInferiorOculto)}
+              onToggle={() => setPanelInferiorOculto(p => !p)}
             >
               <InputConsole
                 data={inputs}
@@ -810,39 +825,31 @@ export function Calculadora() {
             </BottomPanel>
           </div>
 
-          {/* PANEL DERECHO CONTROLADO */}
-          <RightPanel 
+          <RightPanel
             initialWidth={380} minWidth={280} maxWidth={520}
             collapsed={panelDerechoOculto}
-            onToggle={() => setPanelDerechoOculto(!panelDerechoOculto)}
+            onToggle={() => setPanelDerechoOculto(p => !p)}
           >
             <div className="right-sidebar" style={{ flex: 1, overflowY: 'auto' }}>
               <SolutionDisplay
-                res={res}
-                inputs={inputs}
-                onChange={handleChange}
-                onFire={handleEjecutarTiro}
-                missionActive={isFiring}
-                faseMision={faseMision}
+                res={res} inputs={inputs} onChange={handleChange}
+                onFire={handleEjecutarTiro} missionActive={isFiring} faseMision={faseMision}
               />
               <MissionLog
-                  logs={historial}
-                  onDelete={eliminarLog}
-                  onEdit={setLogAEditar}
+                logs={historial} onDelete={eliminarLog} onEdit={setLogAEditar}
               />
               <CorrectionPanel
                 reglaje={reglaje} onChange={handleReglaje} onApply={aplicarCorreccion}
               />
               {logAEditar && (
-                  <EditReglajeModal 
-                      log={logAEditar} 
-                      onClose={() => setLogAEditar(null)} 
-                      onSave={manejarGuardadoEdicion} 
-                  />
+                <EditReglajeModal
+                  log={logAEditar}
+                  onClose={() => setLogAEditar(null)}
+                  onSave={manejarGuardadoEdicion}
+                />
               )}
             </div>
           </RightPanel>
-
         </div>
       </div>
     </div>

@@ -1,23 +1,42 @@
 import React, { useState } from 'react';
 import type { LogTiro } from '../../views/Calculadora';
+import type { ReglajeState } from './CorrectionPanel';
 
 interface EditReglajeModalProps {
     log: LogTiro;
     onClose: () => void;
-    onSave: (logId: number, nuevoReglaje: any) => void;
+    onSave: (logId: number, nuevoReglaje: ReglajeState) => void;
 }
 
 export function EditReglajeModal({ log, onClose, onSave }: EditReglajeModalProps) {
-    // Iniciamos el estado local con los datos crudos guardados en ese log
-    const [editData, setEditData] = useState(log.fullData?.rawReglaje || {
-        metodo: 'apreciacion', dir: 'right', val_dir: 0, rango: 'add', val_rango: 0, imp_az: 0, imp_dist: 0, imp_unit: 'mils'
+    // Iniciamos el estado local con los datos crudos guardados en ese log,
+    // garantizando que cumple con la interfaz ReglajeState
+    const [editData, setEditData] = useState<ReglajeState>(() => {
+        if (log.fullData?.rawReglaje) {
+            return log.fullData.rawReglaje as ReglajeState;
+        }
+        return {
+            metodo: 'apreciacion', 
+            dir: 'right', 
+            val_dir: 0, 
+            rango: 'add', 
+            val_rango: 0, 
+            imp_az: 0, 
+            imp_dist: 0, 
+            imp_unit: 'mils'
+        };
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { id, value, type } = e.target;
-        let val: any = value;
-        if (type === 'number') val = parseFloat(value) || 0;
-        setEditData((prev: any) => ({ ...prev, [id]: val }));
+        
+        let val: string | number = value;
+        if (type === 'number') {
+            val = parseFloat(value);
+            if (isNaN(val)) val = 0;
+        }
+        
+        setEditData(prev => ({ ...prev, [id]: val }));
     };
 
     const handleApply = () => {
@@ -50,34 +69,34 @@ export function EditReglajeModal({ log, onClose, onSave }: EditReglajeModalProps
                         </span>
                     </div>
 
-                    {/* CAMPOS DE EDICIÓN SEGÚN EL MÉTOD0 */}
+                    {/* CAMPOS DE EDICIÓN SEGÚN EL MÉTODO */}
                     {editData.metodo === 'apreciacion' ? (
                         <>
                             {/* VISTA APRECIACIÓN */}
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ color: '#aaa', fontSize: '0.7rem' }}>DIRECCIÓN</label>
-                                    <select id="dir" value={editData.dir} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }}>
+                                    <select id="dir" value={editData.dir || 'right'} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }}>
                                         <option value="right">DERECHA</option>
                                         <option value="left">IZQUIERDA</option>
                                     </select>
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ color: '#aaa', fontSize: '0.7rem' }}>VALOR (m)</label>
-                                    <input type="number" id="val_dir" value={editData.val_dir || ''} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
+                                    <input type="number" id="val_dir" value={editData.val_dir === undefined ? '' : editData.val_dir} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
                                 </div>
                             </div>
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ color: '#aaa', fontSize: '0.7rem' }}>ALCANCE</label>
-                                    <select id="rango" value={editData.rango} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }}>
+                                    <select id="rango" value={editData.rango || 'add'} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }}>
                                         <option value="add">LARGO (+)</option>
                                         <option value="drop">CORTO (-)</option>
                                     </select>
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ color: '#aaa', fontSize: '0.7rem' }}>METROS</label>
-                                    <input type="number" id="val_rango" value={editData.val_rango || ''} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
+                                    <input type="number" id="val_rango" value={editData.val_rango === undefined ? '' : editData.val_rango} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
                                 </div>
                             </div>
                         </>
@@ -87,11 +106,11 @@ export function EditReglajeModal({ log, onClose, onSave }: EditReglajeModalProps
                             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ color: '#aaa', fontSize: '0.7rem' }}>AZ IMPACTO</label>
-                                    <input type="number" id="imp_az" value={editData.imp_az || ''} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
+                                    <input type="number" id="imp_az" value={editData.imp_az === undefined ? '' : editData.imp_az} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
                                 </div>
                                 <div style={{ flex: 0.6 }}>
                                     <label style={{ color: '#aaa', fontSize: '0.7rem' }}>UNIT</label>
-                                    <select id="imp_unit" value={editData.imp_unit} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }}>
+                                    <select id="imp_unit" value={editData.imp_unit || 'mils'} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }}>
                                         <option value="mils">MIL</option>
                                         <option value="deg">deg</option>
                                     </select>
@@ -99,7 +118,7 @@ export function EditReglajeModal({ log, onClose, onSave }: EditReglajeModalProps
                             </div>
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ color: '#aaa', fontSize: '0.7rem' }}>DISTANCIA IMPACTO (m)</label>
-                                <input type="number" id="imp_dist" value={editData.imp_dist || ''} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
+                                <input type="number" id="imp_dist" value={editData.imp_dist === undefined ? '' : editData.imp_dist} onChange={handleChange} style={{ width: '100%', background: '#111', color: '#fff', border: '1px solid #333', padding: '4px', outline: 'none' }} />
                             </div>
                         </>
                     )}

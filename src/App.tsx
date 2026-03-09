@@ -7,11 +7,13 @@ import { Tablas } from './views/Tablas';
 import { Convertidor } from './views/Convertidor';
 import { Manual } from './views/Manual';
 import { Armeria } from './views/Armeria';
+import LicenciaGuard from './components/LicenciaGuard';
 
 // App ya monta con ARSENAL sincronizado (lo garantiza main.tsx).
 // No se necesita ningún estado de carga aquí.
 function App() {
   return (
+     <LicenciaGuard>
     <Router>
       <div style={{ display: 'flex', width: '100vw', height: '100vh', background: '#000', overflow: 'hidden' }}>
         
@@ -30,6 +32,7 @@ function App() {
 
       </div>
     </Router>
+    </LicenciaGuard>
   );
 }
 

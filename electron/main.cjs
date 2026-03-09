@@ -1,10 +1,26 @@
+// ============================================================
+//  electron/main.cjs — MORTEROS-MARIA
+//  Proceso principal de Electron
+// ============================================================
+
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const Database = require('better-sqlite3');
 const fs = require('fs');
+const crypto = require('crypto');
+const https = require('https');
+const Database = require('better-sqlite3');
 
+// ── Variables globales ────────────────────────────────────────
 let mainWindow;
 let db;
+
+// ── Configuración de Supabase (licencias) ────────────────────
+const SUPABASE_HOST = 'rlycggwvmndtdhweqrae.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJseWNnZ3d2bW5kdGRod2VxcmFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwODYxMTMsImV4cCI6MjA4ODY2MjExM30.z95OcvkN8MgrYqxOn2CDNEyu2Oq8AwEOQV6me8WQUKs';
+const MAX_DIAS_OFFLINE = 30;
+
+// ── Versión de semilla de datos ───────────────────────────────
+const SEED_VERSION = '1.0.1';
 
 // ============================================================
 // SISTEMA DE LOGS DE ERRORES A ARCHIVO
@@ -16,9 +32,8 @@ function logError(contexto, error) {
     const linea = `[${new Date().toISOString()}] [${contexto}] ${String(error)}\n`;
     fs.appendFileSync(logPath, linea, 'utf8');
     console.error(linea.trim());
-  } catch (_) { /* Si el log falla, no hay nada mas que hacer */ }
+  } catch (_) { /* Si el log falla, no hay nada más que hacer */ }
 }
-
 
 // ============================================================
 // SISTEMA DE BACKUP AUTOMÁTICO
@@ -30,7 +45,6 @@ function crearBackupAutomatico() {
     const backupDir = path.join(app.getPath('userData'), 'backups');
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
-    // Leer todo el arsenal actual
     const rows = db.prepare('SELECT * FROM arsenal').all();
     const arsenalData = {};
     rows.forEach(row => {
@@ -39,28 +53,27 @@ function crearBackupAutomatico() {
         requiereMeteo: row.requiere_meteo === 1,
         standar: JSON.parse(row.standar),
         cargas: JSON.parse(row.cargas),
-        rangos: JSON.parse(row.rangos)
+        rangos: JSON.parse(row.rangos),
       };
     });
 
-    // Nombre con timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const backupPath = path.join(backupDir, `arsenal_backup_${timestamp}.json`);
-    
+
     fs.writeFileSync(backupPath, JSON.stringify({
       version: SEED_VERSION,
       fecha: new Date().toISOString(),
-      municiones: arsenalData
+      municiones: arsenalData,
     }, null, 2), 'utf8');
 
     // Mantener solo los últimos 5 backups
     const archivos = fs.readdirSync(backupDir)
       .filter(f => f.startsWith('arsenal_backup_') && f.endsWith('.json'))
       .sort();
-    
+
     if (archivos.length > 5) {
-      const aEliminar = archivos.slice(0, archivos.length - 5);
-      aEliminar.forEach(f => fs.unlinkSync(path.join(backupDir, f)));
+      archivos.slice(0, archivos.length - 5)
+        .forEach(f => fs.unlinkSync(path.join(backupDir, f)));
     }
 
     console.log(`[BACKUP] Guardado: ${backupPath}`);
@@ -70,9 +83,9 @@ function crearBackupAutomatico() {
     return null;
   }
 }
+
 // ============================================================
-// SEMILLA DE DATOS - Copiada directamente desde database.ts
-// Este objeto es la fuente de verdad para el primer arranque.
+// SEMILLA DE DATOS
 // ============================================================
 const ARSENAL_SEMILLA = {
   "W87": {
@@ -326,8 +339,8 @@ const ARSENAL_SEMILLA = {
       5: { min: 1425, max: 4165 },
       6: { min: 1630, max: 4761 },
       7: { min: 1823, max: 5299 },
-      8: { min: 1985, max: 5659 }
-    }
+      8: { min: 1985, max: 5659 },
+    },
   },
   "APC85": {
     descripcion: "Mortero 120mm - APC-85 (ECIA)",
@@ -339,7 +352,7 @@ const ARSENAL_SEMILLA = {
         [2400, 1397, 0, 0, 0, 0, 0, 0, 0], [2500, 1342, 0, 0, 0, 0, 0, 0, 0],
         [2600, 1283, 0, 0, 0, 0, 0, 0, 0], [2700, 1219, 0, 0, 0, 0, 0, 0, 0],
         [2800, 1146, 0, 0, 0, 0, 0, 0, 0], [2900, 1045, 0, 0, 0, 0, 0, 0, 0],
-        [3000, 921, 0, 0, 0, 0, 0, 0, 0]
+        [3000, 921, 0, 0, 0, 0, 0, 0, 0],
       ],
       1: [
         [2500, 1452, 0, 0, 0, 0, 0, 0, 0], [2600, 1421, 0, 0, 0, 0, 0, 0, 0],
@@ -348,7 +361,7 @@ const ARSENAL_SEMILLA = {
         [3100, 1253, 0, 0, 0, 0, 0, 0, 0], [3200, 1214, 0, 0, 0, 0, 0, 0, 0],
         [3300, 1172, 0, 0, 0, 0, 0, 0, 0], [3400, 1126, 0, 0, 0, 0, 0, 0, 0],
         [3500, 1074, 0, 0, 0, 0, 0, 0, 0], [3600, 1010, 0, 0, 0, 0, 0, 0, 0],
-        [3700, 820, 0, 0, 0, 0, 0, 0, 0]
+        [3700, 820, 0, 0, 0, 0, 0, 0, 0],
       ],
       2: [
         [2700, 1451, 0, 0, 0, 0, 0, 0, 0], [2800, 1429, 0, 0, 0, 0, 0, 0, 0],
@@ -359,7 +372,7 @@ const ARSENAL_SEMILLA = {
         [3700, 1205, 0, 0, 0, 0, 0, 0, 0], [3800, 1175, 0, 0, 0, 0, 0, 0, 0],
         [3900, 1142, 0, 0, 0, 0, 0, 0, 0], [4000, 1107, 0, 0, 0, 0, 0, 0, 0],
         [4100, 1067, 0, 0, 0, 0, 0, 0, 0], [4200, 1022, 0, 0, 0, 0, 0, 0, 0],
-        [4300, 966, 0, 0, 0, 0, 0, 0, 0],  [4400, 884, 0, 0, 0, 0, 0, 0, 0]
+        [4300, 966, 0, 0, 0, 0, 0, 0, 0], [4400, 884, 0, 0, 0, 0, 0, 0, 0],
       ],
       3: [
         [3400, 1408, 0, 0, 0, 0, 0, 0, 0], [3500, 1393, 0, 0, 0, 0, 0, 0, 0],
@@ -370,7 +383,7 @@ const ARSENAL_SEMILLA = {
         [4400, 1252, 0, 0, 0, 0, 0, 0, 0], [4500, 1234, 0, 0, 0, 0, 0, 0, 0],
         [4600, 1216, 0, 0, 0, 0, 0, 0, 0], [4700, 1198, 0, 0, 0, 0, 0, 0, 0],
         [4800, 1178, 0, 0, 0, 0, 0, 0, 0], [4900, 1158, 0, 0, 0, 0, 0, 0, 0],
-        [5000, 1137, 0, 0, 0, 0, 0, 0, 0], [5100, 1114, 0, 0, 0, 0, 0, 0, 0]
+        [5000, 1137, 0, 0, 0, 0, 0, 0, 0], [5100, 1114, 0, 0, 0, 0, 0, 0, 0],
       ],
       4: [
         [4600, 1328, 0, 0, 0, 0, 0, 0, 0], [4700, 1316, 0, 0, 0, 0, 0, 0, 0],
@@ -384,7 +397,7 @@ const ARSENAL_SEMILLA = {
         [6200, 1107, 0, 0, 0, 0, 0, 0, 0], [6300, 1089, 0, 0, 0, 0, 0, 0, 0],
         [6400, 1070, 0, 0, 0, 0, 0, 0, 0], [6500, 1050, 0, 0, 0, 0, 0, 0, 0],
         [6600, 1027, 0, 0, 0, 0, 0, 0, 0], [6700, 1003, 0, 0, 0, 0, 0, 0, 0],
-        [6800, 976, 0, 0, 0, 0, 0, 0, 0],  [6900, 943, 0, 0, 0, 0, 0, 0, 0]
+        [6800, 976, 0, 0, 0, 0, 0, 0, 0], [6900, 943, 0, 0, 0, 0, 0, 0, 0],
       ],
       5: [
         [5500, 1300, 0, 0, 0, 0, 0, 0, 0], [5600, 1290, 0, 0, 0, 0, 0, 0, 0],
@@ -399,9 +412,9 @@ const ARSENAL_SEMILLA = {
         [7300, 1091, 0, 0, 0, 0, 0, 0, 0], [7400, 1076, 0, 0, 0, 0, 0, 0, 0],
         [7500, 1059, 0, 0, 0, 0, 0, 0, 0], [7600, 1042, 0, 0, 0, 0, 0, 0, 0],
         [7700, 1024, 0, 0, 0, 0, 0, 0, 0], [7800, 1004, 0, 0, 0, 0, 0, 0, 0],
-        [7900, 982, 0, 0, 0, 0, 0, 0, 0],  [8000, 958, 0, 0, 0, 0, 0, 0, 0],
-        [8100, 929, 0, 0, 0, 0, 0, 0, 0],  [8200, 891, 0, 0, 0, 0, 0, 0, 0],
-        [8300, 800, 0, 0, 0, 0, 0, 0, 0]
+        [7900, 982, 0, 0, 0, 0, 0, 0, 0], [8000, 958, 0, 0, 0, 0, 0, 0, 0],
+        [8100, 929, 0, 0, 0, 0, 0, 0, 0], [8200, 891, 0, 0, 0, 0, 0, 0, 0],
+        [8300, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       6: [
         [5800, 1321, 0, 0, 0, 0, 0, 0, 0], [5900, 1312, 0, 0, 0, 0, 0, 0, 0],
@@ -419,9 +432,9 @@ const ARSENAL_SEMILLA = {
         [8200, 1069, 0, 0, 0, 0, 0, 0, 0], [8300, 1054, 0, 0, 0, 0, 0, 0, 0],
         [8400, 1038, 0, 0, 0, 0, 0, 0, 0], [8500, 1021, 0, 0, 0, 0, 0, 0, 0],
         [8600, 1004, 0, 0, 0, 0, 0, 0, 0], [8700, 984, 0, 0, 0, 0, 0, 0, 0],
-        [8800, 963, 0, 0, 0, 0, 0, 0, 0],  [8900, 940, 0, 0, 0, 0, 0, 0, 0],
-        [9000, 912, 0, 0, 0, 0, 0, 0, 0],  [9100, 878, 0, 0, 0, 0, 0, 0, 0],
-        [9200, 828, 0, 0, 0, 0, 0, 0, 0]
+        [8800, 963, 0, 0, 0, 0, 0, 0, 0], [8900, 940, 0, 0, 0, 0, 0, 0, 0],
+        [9000, 912, 0, 0, 0, 0, 0, 0, 0], [9100, 878, 0, 0, 0, 0, 0, 0, 0],
+        [9200, 828, 0, 0, 0, 0, 0, 0, 0],
       ],
       7: [
         [6400, 1297, 0, 0, 0, 0, 0, 0, 0], [6500, 1289, 0, 0, 0, 0, 0, 0, 0],
@@ -439,9 +452,9 @@ const ARSENAL_SEMILLA = {
         [8800, 1066, 0, 0, 0, 0, 0, 0, 0], [8900, 1053, 0, 0, 0, 0, 0, 0, 0],
         [9000, 1039, 0, 0, 0, 0, 0, 0, 0], [9100, 1024, 0, 0, 0, 0, 0, 0, 0],
         [9200, 1009, 0, 0, 0, 0, 0, 0, 0], [9300, 992, 0, 0, 0, 0, 0, 0, 0],
-        [9400, 973, 0, 0, 0, 0, 0, 0, 0],  [9500, 953, 0, 0, 0, 0, 0, 0, 0],
-        [9600, 929, 0, 0, 0, 0, 0, 0, 0],  [9700, 900, 0, 0, 0, 0, 0, 0, 0],
-        [9800, 858, 0, 0, 0, 0, 0, 0, 0]
+        [9400, 973, 0, 0, 0, 0, 0, 0, 0], [9500, 953, 0, 0, 0, 0, 0, 0, 0],
+        [9600, 929, 0, 0, 0, 0, 0, 0, 0], [9700, 900, 0, 0, 0, 0, 0, 0, 0],
+        [9800, 858, 0, 0, 0, 0, 0, 0, 0],
       ],
       8: [
         [7000, 1271, 0, 0, 0, 0, 0, 0, 0], [7100, 1263, 0, 0, 0, 0, 0, 0, 0],
@@ -458,9 +471,9 @@ const ARSENAL_SEMILLA = {
         [9200, 1065, 0, 0, 0, 0, 0, 0, 0], [9300, 1053, 0, 0, 0, 0, 0, 0, 0],
         [9400, 1039, 0, 0, 0, 0, 0, 0, 0], [9500, 1025, 0, 0, 0, 0, 0, 0, 0],
         [9600, 1011, 0, 0, 0, 0, 0, 0, 0], [9700, 995, 0, 0, 0, 0, 0, 0, 0],
-        [9800, 978, 0, 0, 0, 0, 0, 0, 0],  [9900, 959, 0, 0, 0, 0, 0, 0, 0],
+        [9800, 978, 0, 0, 0, 0, 0, 0, 0], [9900, 959, 0, 0, 0, 0, 0, 0, 0],
         [10000, 937, 0, 0, 0, 0, 0, 0, 0], [10100, 912, 0, 0, 0, 0, 0, 0, 0],
-        [10200, 879, 0, 0, 0, 0, 0, 0, 0], [10300, 800, 0, 0, 0, 0, 0, 0, 0]
+        [10200, 879, 0, 0, 0, 0, 0, 0, 0], [10300, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       9: [
         [7100, 1280, 0, 0, 0, 0, 0, 0, 0], [7200, 1272, 0, 0, 0, 0, 0, 0, 0],
@@ -480,16 +493,16 @@ const ARSENAL_SEMILLA = {
         [9900, 1007, 0, 0, 0, 0, 0, 0, 0], [10000, 990, 0, 0, 0, 0, 0, 0, 0],
         [10100, 971, 0, 0, 0, 0, 0, 0, 0], [10200, 950, 0, 0, 0, 0, 0, 0, 0],
         [10300, 925, 0, 0, 0, 0, 0, 0, 0], [10400, 892, 0, 0, 0, 0, 0, 0, 0],
-        [10500, 814, 0, 0, 0, 0, 0, 0, 0]
-      ]
+        [10500, 814, 0, 0, 0, 0, 0, 0, 0],
+      ],
     },
     rangos: {
       0: { min: 2200, max: 3000 }, 1: { min: 2500, max: 3700 },
       2: { min: 2700, max: 4400 }, 3: { min: 3400, max: 5100 },
       4: { min: 4600, max: 6900 }, 5: { min: 5500, max: 8300 },
       6: { min: 5800, max: 9200 }, 7: { min: 6400, max: 9800 },
-      8: { min: 7000, max: 10300 }, 9: { min: 7100, max: 10500 }
-    }
+      8: { min: 7000, max: 10300 }, 9: { min: 7100, max: 10500 },
+    },
   },
   "ECIA120": {
     descripcion: "Mortero 120mm - ECIA (Tubo 1.80m)",
@@ -504,7 +517,7 @@ const ARSENAL_SEMILLA = {
         [1200, 1241, 0, 0, 0, 0, 0, 0, 0], [1300, 1204, 0, 0, 0, 0, 0, 0, 0],
         [1400, 1164, 0, 0, 0, 0, 0, 0, 0], [1500, 1120, 0, 0, 0, 0, 0, 0, 0],
         [1600, 1070, 0, 0, 0, 0, 0, 0, 0], [1700, 1010, 0, 0, 0, 0, 0, 0, 0],
-        [1800, 925, 0, 0, 0, 0, 0, 0, 0],  [1856, 800, 0, 0, 0, 0, 0, 0, 0]
+        [1800, 925, 0, 0, 0, 0, 0, 0, 0], [1856, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       2: [
         [1000, 1435, 0, 0, 0, 0, 0, 0, 0], [1100, 1417, 0, 0, 0, 0, 0, 0, 0],
@@ -518,7 +531,7 @@ const ARSENAL_SEMILLA = {
         [2500, 1131, 0, 0, 0, 0, 0, 0, 0], [2600, 1103, 0, 0, 0, 0, 0, 0, 0],
         [2700, 1073, 0, 0, 0, 0, 0, 0, 0], [2800, 1039, 0, 0, 0, 0, 0, 0, 0],
         [2900, 1001, 0, 0, 0, 0, 0, 0, 0], [3000, 953, 0, 0, 0, 0, 0, 0, 0],
-        [3100, 883, 0, 0, 0, 0, 0, 0, 0],  [3142, 800, 0, 0, 0, 0, 0, 0, 0]
+        [3100, 883, 0, 0, 0, 0, 0, 0, 0], [3142, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       3: [
         [1500, 1421, 0, 0, 0, 0, 0, 0, 0], [1600, 1409, 0, 0, 0, 0, 0, 0, 0],
@@ -535,8 +548,8 @@ const ARSENAL_SEMILLA = {
         [3500, 1128, 0, 0, 0, 0, 0, 0, 0], [3600, 1108, 0, 0, 0, 0, 0, 0, 0],
         [3700, 1087, 0, 0, 0, 0, 0, 0, 0], [3800, 1064, 0, 0, 0, 0, 0, 0, 0],
         [3900, 1040, 0, 0, 0, 0, 0, 0, 0], [4000, 1013, 0, 0, 0, 0, 0, 0, 0],
-        [4100, 982, 0, 0, 0, 0, 0, 0, 0],  [4200, 945, 0, 0, 0, 0, 0, 0, 0],
-        [4300, 896, 0, 0, 0, 0, 0, 0, 0],  [4378, 800, 0, 0, 0, 0, 0, 0, 0]
+        [4100, 982, 0, 0, 0, 0, 0, 0, 0], [4200, 945, 0, 0, 0, 0, 0, 0, 0],
+        [4300, 896, 0, 0, 0, 0, 0, 0, 0], [4378, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       4: [
         [2000, 1413, 0, 0, 0, 0, 0, 0, 0], [2100, 1403, 0, 0, 0, 0, 0, 0, 0],
@@ -556,9 +569,9 @@ const ARSENAL_SEMILLA = {
         [4600, 1106, 0, 0, 0, 0, 0, 0, 0], [4700, 1089, 0, 0, 0, 0, 0, 0, 0],
         [4800, 1072, 0, 0, 0, 0, 0, 0, 0], [4900, 1053, 0, 0, 0, 0, 0, 0, 0],
         [5000, 1033, 0, 0, 0, 0, 0, 0, 0], [5100, 1012, 0, 0, 0, 0, 0, 0, 0],
-        [5200, 988, 0, 0, 0, 0, 0, 0, 0],  [5300, 960, 0, 0, 0, 0, 0, 0, 0],
-        [5400, 928, 0, 0, 0, 0, 0, 0, 0],  [5500, 883, 0, 0, 0, 0, 0, 0, 0],
-        [5574, 800, 0, 0, 0, 0, 0, 0, 0]
+        [5200, 988, 0, 0, 0, 0, 0, 0, 0], [5300, 960, 0, 0, 0, 0, 0, 0, 0],
+        [5400, 928, 0, 0, 0, 0, 0, 0, 0], [5500, 883, 0, 0, 0, 0, 0, 0, 0],
+        [5574, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       5: [
         [2500, 1411, 0, 0, 0, 0, 0, 0, 0], [2600, 1403, 0, 0, 0, 0, 0, 0, 0],
@@ -582,10 +595,10 @@ const ARSENAL_SEMILLA = {
         [5800, 1092, 0, 0, 0, 0, 0, 0, 0], [5900, 1078, 0, 0, 0, 0, 0, 0, 0],
         [6000, 1063, 0, 0, 0, 0, 0, 0, 0], [6100, 1048, 0, 0, 0, 0, 0, 0, 0],
         [6200, 1032, 0, 0, 0, 0, 0, 0, 0], [6300, 1014, 0, 0, 0, 0, 0, 0, 0],
-        [6400, 995, 0, 0, 0, 0, 0, 0, 0],  [6500, 975, 0, 0, 0, 0, 0, 0, 0],
-        [6600, 951, 0, 0, 0, 0, 0, 0, 0],  [6700, 924, 0, 0, 0, 0, 0, 0, 0],
-        [6800, 888, 0, 0, 0, 0, 0, 0, 0],  [6900, 812, 0, 0, 0, 0, 0, 0, 0],
-        [6902, 800, 0, 0, 0, 0, 0, 0, 0]
+        [6400, 995, 0, 0, 0, 0, 0, 0, 0], [6500, 975, 0, 0, 0, 0, 0, 0, 0],
+        [6600, 951, 0, 0, 0, 0, 0, 0, 0], [6700, 924, 0, 0, 0, 0, 0, 0, 0],
+        [6800, 888, 0, 0, 0, 0, 0, 0, 0], [6900, 812, 0, 0, 0, 0, 0, 0, 0],
+        [6902, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       6: [
         [3000, 1398, 0, 0, 0, 0, 0, 0, 0], [3100, 1391, 0, 0, 0, 0, 0, 0, 0],
@@ -611,10 +624,10 @@ const ARSENAL_SEMILLA = {
         [6700, 1070, 0, 0, 0, 0, 0, 0, 0], [6800, 1056, 0, 0, 0, 0, 0, 0, 0],
         [6900, 1042, 0, 0, 0, 0, 0, 0, 0], [6902, 1041, 0, 0, 0, 0, 0, 0, 0],
         [7000, 1028, 0, 0, 0, 0, 0, 0, 0], [7100, 1012, 0, 0, 0, 0, 0, 0, 0],
-        [7200, 995, 0, 0, 0, 0, 0, 0, 0],  [7300, 977, 0, 0, 0, 0, 0, 0, 0],
-        [7400, 956, 0, 0, 0, 0, 0, 0, 0],  [7500, 933, 0, 0, 0, 0, 0, 0, 0],
-        [7600, 905, 0, 0, 0, 0, 0, 0, 0],  [7700, 865, 0, 0, 0, 0, 0, 0, 0],
-        [7763, 800, 0, 0, 0, 0, 0, 0, 0]
+        [7200, 995, 0, 0, 0, 0, 0, 0, 0], [7300, 977, 0, 0, 0, 0, 0, 0, 0],
+        [7400, 956, 0, 0, 0, 0, 0, 0, 0], [7500, 933, 0, 0, 0, 0, 0, 0, 0],
+        [7600, 905, 0, 0, 0, 0, 0, 0, 0], [7700, 865, 0, 0, 0, 0, 0, 0, 0],
+        [7763, 800, 0, 0, 0, 0, 0, 0, 0],
       ],
       7: [
         [3500, 1377, 0, 0, 0, 0, 0, 0, 0], [3600, 1370, 0, 0, 0, 0, 0, 0, 0],
@@ -640,11 +653,11 @@ const ARSENAL_SEMILLA = {
         [7200, 1060, 0, 0, 0, 0, 0, 0, 0], [7300, 1047, 0, 0, 0, 0, 0, 0, 0],
         [7400, 1033, 0, 0, 0, 0, 0, 0, 0], [7500, 1019, 0, 0, 0, 0, 0, 0, 0],
         [7600, 1004, 0, 0, 0, 0, 0, 0, 0], [7700, 987, 0, 0, 0, 0, 0, 0, 0],
-        [7763, 976, 0, 0, 0, 0, 0, 0, 0],  [7800, 969, 0, 0, 0, 0, 0, 0, 0],
-        [7900, 949, 0, 0, 0, 0, 0, 0, 0],  [8000, 926, 0, 0, 0, 0, 0, 0, 0],
-        [8100, 897, 0, 0, 0, 0, 0, 0, 0],  [8200, 856, 0, 0, 0, 0, 0, 0, 0],
-        [8250, 800, 0, 0, 0, 0, 0, 0, 0]
-      ]
+        [7763, 976, 0, 0, 0, 0, 0, 0, 0], [7800, 969, 0, 0, 0, 0, 0, 0, 0],
+        [7900, 949, 0, 0, 0, 0, 0, 0, 0], [8000, 926, 0, 0, 0, 0, 0, 0, 0],
+        [8100, 897, 0, 0, 0, 0, 0, 0, 0], [8200, 856, 0, 0, 0, 0, 0, 0, 0],
+        [8250, 800, 0, 0, 0, 0, 0, 0, 0],
+      ],
     },
     rangos: {
       1: { min: 400, max: 1856 },
@@ -653,13 +666,88 @@ const ARSENAL_SEMILLA = {
       4: { min: 2000, max: 5574 },
       5: { min: 2500, max: 6902 },
       6: { min: 3000, max: 7763 },
-      7: { min: 3500, max: 8250 }
-    }
-  }
+      7: { min: 3500, max: 8250 },
+    },
+  },
 };
 
 // ============================================================
-// 1. INICIALIZACIÓN DE LA BASE DE DATOS
+// SISTEMA DE LICENCIAS — helpers
+// ============================================================
+
+/** Genera un ID único basado en el hardware del PC */
+function getHardwareId() {
+  const os = require('os');
+  const data = `${os.hostname()}-${os.platform()}-${os.arch()}-${(os.cpus()[0] || {}).model || ''}`;
+  return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16).toUpperCase();
+}
+
+/** Abre (o crea) la base de datos de licencia, separada del arsenal */
+function getLicDB() {
+  const licPath = path.join(app.getPath('userData'), 'licencia.db');
+  const licDB = new Database(licPath);
+  licDB.exec(`
+    CREATE TABLE IF NOT EXISTS lic_local (
+      id          INTEGER PRIMARY KEY,
+      codigo      TEXT    NOT NULL,
+      cliente     TEXT    NOT NULL,
+      fecha_fin   TEXT    NOT NULL,
+      ultima_val  TEXT    NOT NULL,
+      hardware_id TEXT    NOT NULL UNIQUE
+    )
+  `);
+  return licDB;
+}
+
+/** Llama a una función RPC de Supabase usando https nativo de Node */
+function supabaseRPC(funcion, params) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify(params);
+    const options = {
+      hostname: SUPABASE_HOST,
+      path: `/rest/v1/rpc/${funcion}`,
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          // Supabase RPC puede devolver el resultado directo
+          // o envuelto en un array: [{"nombre_funcion": {...}}]
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const first = parsed[0];
+            const val = first[funcion] ?? first;
+            resolve(typeof val === 'string' ? JSON.parse(val) : val);
+          } else {
+            resolve(typeof parsed === 'string' ? JSON.parse(parsed) : parsed);
+          }
+        } catch { resolve(null); }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    req.write(body);
+    req.end();
+  });
+}
+
+/** Días enteros que quedan hasta fechaFin (mínimo 0) */
+function calcularDiasLic(fechaFin) {
+  return Math.max(0, Math.ceil((new Date(fechaFin).getTime() - Date.now()) / 86_400_000));
+}
+
+// ============================================================
+// INICIALIZACIÓN DE LA BASE DE DATOS DEL ARSENAL
 // ============================================================
 function initDB() {
   const dbPath = path.join(app.getPath('userData'), 'morteros_maria.sqlite');
@@ -669,16 +757,13 @@ function initDB() {
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS arsenal (
-      id_municion TEXT PRIMARY KEY,
-      descripcion TEXT,
+      id_municion   TEXT PRIMARY KEY,
+      descripcion   TEXT,
       requiere_meteo INTEGER,
-      standar TEXT,
-      cargas TEXT,
-      rangos TEXT
+      standar       TEXT,
+      cargas        TEXT,
+      rangos        TEXT
     );
-    -- Tabla de control de versión de semilla
-    -- Cuando incrementes SEED_VERSION, los datos de semilla se reinyectan
-    -- aunque ya existan registros (útil para actualizar tablas de tiro).
     CREATE TABLE IF NOT EXISTS meta (
       clave TEXT PRIMARY KEY,
       valor TEXT
@@ -689,34 +774,9 @@ function initDB() {
 }
 
 // ============================================================
-// 2. SEEDING AUTOMÁTICO EN EL PROCESO PRINCIPAL
-//    Se ejecuta ANTES de crear la ventana.
-//    Lógica:
-//      - Si la BD está vacía → inserta la semilla completa.
-//      - Si la versión de semilla cambió → actualiza con UPSERT.
-//      - Si ya está al día → no hace nada (arranque rápido).
+// SEEDING AUTOMÁTICO
 // ============================================================
-const SEED_VERSION = '1.0.1'; // Incrementado: ahora incluye ECIA120 completo
-
-// ============================================================
-// VERIFICACION DE INTEGRIDAD AL ARRANQUE
-// Si la BD quedo vacia por corrupcion, re-siembra automaticamente
-// ============================================================
-function verificarIntegridad() {
-  try {
-    const count = db.prepare("SELECT COUNT(*) as n FROM arsenal").get();
-    if (count.n === 0) {
-      logError('INTEGRIDAD', 'Arsenal vacio detectado — forzando re-seed');
-      db.prepare("DELETE FROM meta WHERE clave = 'seed_version'").run();
-      seedDatabase();
-    }
-  } catch (error) {
-    logError('INTEGRIDAD_ERROR', error);
-  }
-}
-
 function seedDatabase() {
-  // Verificar versión actual de la semilla en la BD
   const metaRow = db.prepare("SELECT valor FROM meta WHERE clave = 'seed_version'").get();
   const currentVersion = metaRow ? metaRow.valor : null;
 
@@ -727,16 +787,15 @@ function seedDatabase() {
 
   console.log(`[LOGÍSTICA] Aplicando semilla v${SEED_VERSION}...`);
 
-  // Usamos una transacción para velocidad y atomicidad
   const upsertMunicion = db.prepare(`
     INSERT INTO arsenal (id_municion, descripcion, requiere_meteo, standar, cargas, rangos)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id_municion) DO UPDATE SET
-      descripcion = excluded.descripcion,
+      descripcion    = excluded.descripcion,
       requiere_meteo = excluded.requiere_meteo,
-      standar = excluded.standar,
-      cargas = excluded.cargas,
-      rangos = excluded.rangos
+      standar        = excluded.standar,
+      cargas         = excluded.cargas,
+      rangos         = excluded.rangos
   `);
 
   const upsertMeta = db.prepare(`
@@ -744,7 +803,7 @@ function seedDatabase() {
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor
   `);
 
-  const transaction = db.transaction(() => {
+  db.transaction(() => {
     for (const [id, datos] of Object.entries(ARSENAL_SEMILLA)) {
       upsertMunicion.run(
         id,
@@ -752,25 +811,39 @@ function seedDatabase() {
         datos.requiereMeteo ? 1 : 0,
         JSON.stringify(datos.standar),
         JSON.stringify(datos.cargas),
-        JSON.stringify(datos.rangos)
+        JSON.stringify(datos.rangos),
       );
     }
-    // Guardar la versión aplicada
     upsertMeta.run('seed_version', SEED_VERSION);
-  });
+  })();
 
-  transaction();
   console.log(`[LOGÍSTICA] Semilla v${SEED_VERSION} aplicada. ${Object.keys(ARSENAL_SEMILLA).length} municiones cargadas.`);
 }
 
 // ============================================================
-// 3. CONFIGURACIÓN DE LA VENTANA
+// VERIFICACIÓN DE INTEGRIDAD
+// ============================================================
+function verificarIntegridad() {
+  try {
+    const count = db.prepare('SELECT COUNT(*) as n FROM arsenal').get();
+    if (count.n === 0) {
+      logError('INTEGRIDAD', 'Arsenal vacío detectado — forzando re-seed');
+      db.prepare("DELETE FROM meta WHERE clave = 'seed_version'").run();
+      seedDatabase();
+    }
+  } catch (error) {
+    logError('INTEGRIDAD_ERROR', error);
+  }
+}
+
+// ============================================================
+// VENTANA PRINCIPAL
 // ============================================================
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1300,
     height: 850,
-    title: "MORTEROS-MARIA // SISTEMA DE TIRO",
+    title: 'MORTEROS-MARIA // SISTEMA DE TIRO',
     backgroundColor: '#000000',
     icon: path.join(__dirname, '../public/icon.ico'),
     webPreferences: {
@@ -789,14 +862,13 @@ function createWindow() {
 }
 
 // ============================================================
-// 4. ARRANQUE DEL SISTEMA
-//    Orden crítico: BD → Semilla → Ventana
+// ARRANQUE — Orden crítico: BD → Semilla → Ventana
 // ============================================================
 app.whenReady().then(() => {
-  initDB();             // 1. Crear/abrir BD
-  seedDatabase();        // 2. Inyectar semilla si es necesario
-  verificarIntegridad(); // 3. Chequeo de seguridad
-  createWindow();        // 4. Mostrar interfaz (ya con datos garantizados)
+  initDB();
+  seedDatabase();
+  verificarIntegridad();
+  createWindow();
 });
 
 app.on('window-all-closed', () => {
@@ -807,7 +879,7 @@ app.on('window-all-closed', () => {
 });
 
 // ============================================================
-// 5. CANALES IPC (Sin cambios, igual que antes)
+// IPC — ARSENAL
 // ============================================================
 ipcMain.handle('get-arsenal', () => {
   try {
@@ -819,12 +891,12 @@ ipcMain.handle('get-arsenal', () => {
         requiereMeteo: row.requiere_meteo === 1,
         standar: JSON.parse(row.standar),
         cargas: JSON.parse(row.cargas),
-        rangos: JSON.parse(row.rangos)
+        rangos: JSON.parse(row.rangos),
       };
     });
     return { status: 'OK', data: arsenalJS };
   } catch (error) {
-    console.error("[ERROR BD]", error);
+    console.error('[ERROR BD]', error);
     return { status: 'ERROR', message: error.message };
   }
 });
@@ -835,19 +907,19 @@ ipcMain.handle('save-municion', (event, id, data) => {
       INSERT INTO arsenal (id_municion, descripcion, requiere_meteo, standar, cargas, rangos)
       VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id_municion) DO UPDATE SET
-        descripcion=excluded.descripcion,
-        requiere_meteo=excluded.requiere_meteo,
-        standar=excluded.standar,
-        cargas=excluded.cargas,
-        rangos=excluded.rangos
+        descripcion    = excluded.descripcion,
+        requiere_meteo = excluded.requiere_meteo,
+        standar        = excluded.standar,
+        cargas         = excluded.cargas,
+        rangos         = excluded.rangos
     `).run(
       id, data.descripcion, data.requiereMeteo ? 1 : 0,
-      JSON.stringify(data.standar), JSON.stringify(data.cargas), JSON.stringify(data.rangos)
+      JSON.stringify(data.standar), JSON.stringify(data.cargas), JSON.stringify(data.rangos),
     );
     crearBackupAutomatico();
     return { status: 'OK' };
   } catch (error) {
-    console.error("[ERROR BD]", error);
+    console.error('[ERROR BD]', error);
     return { status: 'ERROR', message: error.message };
   }
 });
@@ -858,26 +930,18 @@ ipcMain.handle('delete-municion', (event, id) => {
     crearBackupAutomatico();
     return { status: 'OK' };
   } catch (error) {
-    console.error("[ERROR BD DELETE]", error);
+    console.error('[ERROR BD DELETE]', error);
     return { status: 'ERROR', message: error.message };
   }
 });
 
-// ============================================================
-// CANAL: RESET A DATOS DE FÁBRICA
-// Borra todo el arsenal y re-siembra desde ARSENAL_SEMILLA
-// ============================================================
 ipcMain.handle('reset-arsenal', () => {
   try {
-    const transaction = db.transaction(() => {
+    db.transaction(() => {
       db.prepare('DELETE FROM arsenal').run();
       db.prepare("DELETE FROM meta WHERE clave = 'seed_version'").run();
-    });
-    transaction();
-
-    // Re-sembrar con datos de fábrica
+    })();
     seedDatabase();
-
     logError('RESET', 'Arsenal restaurado a datos de fábrica por el usuario');
     return { status: 'OK', count: Object.keys(ARSENAL_SEMILLA).length };
   } catch (error) {
@@ -886,37 +950,30 @@ ipcMain.handle('reset-arsenal', () => {
   }
 });
 
-// ============================================================
-// CANAL: OBTENER RUTA DEL LOG DE ERRORES
-// Para mostrarle al usuario dónde está el archivo de logs
-// ============================================================
-ipcMain.handle('get-log-path', () => {
-  return path.join(app.getPath('userData'), 'errores.log');
-});
+ipcMain.handle('get-log-path', () => path.join(app.getPath('userData'), 'errores.log'));
 
 // ============================================================
-// CANALES IPC: GESTIÓN DE BACKUPS
+// IPC — BACKUPS
 // ============================================================
 ipcMain.handle('get-backups', () => {
   try {
     const backupDir = path.join(app.getPath('userData'), 'backups');
     if (!fs.existsSync(backupDir)) return { status: 'OK', backups: [] };
 
-    const archivos = fs.readdirSync(backupDir)
+    const backups = fs.readdirSync(backupDir)
       .filter(f => f.startsWith('arsenal_backup_') && f.endsWith('.json'))
       .sort()
-      .reverse(); // Más reciente primero
-
-    const backups = archivos.map(f => {
-      const fullPath = path.join(backupDir, f);
-      const stat = fs.statSync(fullPath);
-      return {
-        nombre: f,
-        path: fullPath,
-        fecha: stat.mtime.toLocaleString('es-PE'),
-        tamaño: (stat.size / 1024).toFixed(1) + ' KB'
-      };
-    });
+      .reverse()
+      .map(f => {
+        const fullPath = path.join(backupDir, f);
+        const stat = fs.statSync(fullPath);
+        return {
+          nombre: f,
+          path: fullPath,
+          fecha: stat.mtime.toLocaleString('es-PE'),
+          tamaño: (stat.size / 1024).toFixed(1) + ' KB',
+        };
+      });
 
     return { status: 'OK', backups };
   } catch (error) {
@@ -927,32 +984,29 @@ ipcMain.handle('get-backups', () => {
 
 ipcMain.handle('restaurar-backup', (event, backupPath) => {
   try {
-    const raw = fs.readFileSync(backupPath, 'utf8');
-    const backup = JSON.parse(raw);
-    
+    const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
     if (!backup.municiones) return { status: 'ERROR', message: 'Archivo de backup inválido' };
 
     const upsert = db.prepare(`
       INSERT INTO arsenal (id_municion, descripcion, requiere_meteo, standar, cargas, rangos)
       VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id_municion) DO UPDATE SET
-        descripcion=excluded.descripcion,
-        requiere_meteo=excluded.requiere_meteo,
-        standar=excluded.standar,
-        cargas=excluded.cargas,
-        rangos=excluded.rangos
+        descripcion    = excluded.descripcion,
+        requiere_meteo = excluded.requiere_meteo,
+        standar        = excluded.standar,
+        cargas         = excluded.cargas,
+        rangos         = excluded.rangos
     `);
 
-    const transaction = db.transaction(() => {
+    db.transaction(() => {
       db.prepare('DELETE FROM arsenal').run();
       for (const [id, datos] of Object.entries(backup.municiones)) {
         upsert.run(
           id, datos.descripcion, datos.requiereMeteo ? 1 : 0,
-          JSON.stringify(datos.standar), JSON.stringify(datos.cargas), JSON.stringify(datos.rangos)
+          JSON.stringify(datos.standar), JSON.stringify(datos.cargas), JSON.stringify(datos.rangos),
         );
       }
-    });
-    transaction();
+    })();
 
     logError('RESTAURAR_BACKUP', `Backup restaurado: ${backupPath}`);
     return { status: 'OK', count: Object.keys(backup.municiones).length, fecha: backup.fecha };
@@ -964,5 +1018,88 @@ ipcMain.handle('restaurar-backup', (event, backupPath) => {
 
 ipcMain.handle('backup-manual', () => {
   const ruta = crearBackupAutomatico();
-  return ruta ? { status: 'OK', path: ruta } : { status: 'ERROR', message: 'No se pudo crear el backup' };
+  return ruta
+    ? { status: 'OK', path: ruta }
+    : { status: 'ERROR', message: 'No se pudo crear el backup' };
+});
+
+// ============================================================
+// IPC — LICENCIAS
+// ============================================================
+ipcMain.handle('lic-verificar', async () => {
+  try {
+    const hwId = getHardwareId();
+    const licDB = getLicDB();
+    const local = licDB.prepare('SELECT * FROM lic_local WHERE hardware_id = ?').get(hwId);
+
+    if (local?.codigo) {
+      const data = await supabaseRPC('validar_licencia', { p_codigo: local.codigo, p_hardware_id: hwId });
+
+      if (data?.valida) {
+        licDB.prepare('UPDATE lic_local SET ultima_val = ?, fecha_fin = ? WHERE hardware_id = ?')
+          .run(new Date().toISOString(), data.fecha_fin, hwId);
+        const dias = calcularDiasLic(data.fecha_fin);
+        return { valida: true, cliente: data.cliente, diasRestantes: dias, modoOffline: false, mensaje: `Licencia activa — ${dias} días restantes` };
+      }
+      if (data !== null) {
+        return { valida: false, mensaje: data?.mensaje || 'Licencia inválida o expirada.' };
+      }
+      // data === null → sin conexión → caer a offline
+    }
+
+    if (local) {
+      const fechaFin = new Date(local.fecha_fin);
+      const diasSinVal = (Date.now() - new Date(local.ultima_val).getTime()) / 86_400_000;
+      const dias = calcularDiasLic(local.fecha_fin);
+
+      if (fechaFin < new Date()) return { valida: false, mensaje: 'Licencia expirada. Contacta al administrador.' };
+      if (diasSinVal > MAX_DIAS_OFFLINE) return { valida: false, mensaje: `Sin conexión hace ${Math.floor(diasSinVal)} días. Requiere internet para validar.` };
+
+      return { valida: true, cliente: local.cliente, diasRestantes: dias, modoOffline: true, mensaje: `Modo offline — reconectar antes de ${Math.floor(MAX_DIAS_OFFLINE - diasSinVal)} días` };
+    }
+
+    return { valida: false, mensaje: 'No hay licencia activada en este dispositivo.' };
+  } catch (error) {
+    logError('LIC_VERIFICAR', error);
+    return { valida: false, mensaje: 'Error interno al verificar licencia.' };
+  }
+});
+
+ipcMain.handle('lic-activar', async (event, codigo) => {
+  try {
+    const hwId = getHardwareId();
+    const data = await supabaseRPC('activar_licencia', { p_codigo: codigo.trim().toUpperCase(), p_hardware_id: hwId });
+
+    if (!data) return { exito: false, mensaje: 'Sin conexión. Necesitas internet para activar por primera vez.' };
+
+    if (data?.exito) {
+      const licDB = getLicDB();
+      licDB.prepare(`
+        INSERT INTO lic_local (codigo, cliente, fecha_fin, ultima_val, hardware_id)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(hardware_id) DO UPDATE SET
+          codigo     = excluded.codigo,
+          cliente    = excluded.cliente,
+          fecha_fin  = excluded.fecha_fin,
+          ultima_val = excluded.ultima_val
+      `).run(codigo.trim().toUpperCase(), data.cliente, data.fecha_fin, new Date().toISOString(), hwId);
+      return { exito: true, mensaje: `Licencia activada para: ${data.cliente}` };
+    }
+
+    return { exito: false, mensaje: data?.mensaje || 'Código inválido. Verifica e intenta de nuevo.' };
+  } catch (error) {
+    logError('LIC_ACTIVAR', error);
+    return { exito: false, mensaje: 'Error interno al activar licencia.' };
+  }
+});
+
+ipcMain.handle('lic-desactivar', () => {
+  try {
+    const hwId = getHardwareId();
+    const licDB = getLicDB();
+    licDB.prepare('DELETE FROM lic_local WHERE hardware_id = ?').run(hwId);
+    logError('LIC_DESACTIVAR', `Licencia eliminada del dispositivo: ${hwId}`);
+  } catch (error) {
+    logError('LIC_DESACTIVAR_ERROR', error);
+  }
 });

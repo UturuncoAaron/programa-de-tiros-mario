@@ -1,11 +1,40 @@
+import React from 'react';
+
+// ============================================================
+// TIPOS E INTERFACES
+// ============================================================
+
+// Interfaz para el estado del reglaje
+export interface ReglajeState {
+    metodo: 'medicion' | 'apreciacion';
+    dir?: 'right' | 'left';
+    val_dir?: number | string;
+    rango?: 'add' | 'drop';
+    val_rango?: number | string;
+    imp_az?: number | string;
+    imp_unit?: 'mils' | 'deg';
+    imp_dist?: number | string;
+}
+
+// Tipo personalizado para el evento onChange que soporta eventos simulados
+type CustomChangeEvent = 
+    | React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    | { target: { id: string; value: string | number; type?: string } };
+
+// Props del componente
 interface CorrectionPanelProps {
-    reglaje: any;
-    onChange: (e: any) => void;
+    reglaje: ReglajeState;
+    onChange: (e: CustomChangeEvent) => void;
     onApply: () => void;
 }
 
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
 export function CorrectionPanel({ reglaje, onChange, onApply }: CorrectionPanelProps) {
-    const setMetodo = (metodo: string) => {
+    
+    const setMetodo = (metodo: 'medicion' | 'apreciacion') => {
+        // Pasamos un objeto que cumple con la forma de CustomChangeEvent
         onChange({ target: { id: 'metodo', value: metodo, type: 'text' } });
     };
 
@@ -33,7 +62,7 @@ export function CorrectionPanel({ reglaje, onChange, onApply }: CorrectionPanelP
                         <div className="corr-row" style={{ display: 'flex', gap: '5px' }}>
                             <div className="corr-field" style={{ flex: 1 }}>
                                 <label>DIRECCIÓN</label>
-                                <select id="dir" className="tactical-input" value={reglaje.dir} onChange={onChange} style={{ fontSize: '0.8rem' }}>
+                                <select id="dir" className="tactical-input" value={reglaje.dir || 'right'} onChange={onChange} style={{ fontSize: '0.8rem' }}>
                                     <option value="right">DERECHA</option>
                                     <option value="left">IZQUIERDA</option>
                                 </select>
@@ -46,7 +75,7 @@ export function CorrectionPanel({ reglaje, onChange, onApply }: CorrectionPanelP
                         <div className="corr-row" style={{ display: 'flex', gap: '5px' }}>
                             <div className="corr-field" style={{ flex: 1 }}>
                                 <label>ALCANCE</label>
-                                <select id="rango" className="tactical-input" value={reglaje.rango} onChange={onChange} style={{ fontSize: '0.8rem' }}>
+                                <select id="rango" className="tactical-input" value={reglaje.rango || 'add'} onChange={onChange} style={{ fontSize: '0.8rem' }}>
                                     <option value="add">LARGO (+)</option>
                                     <option value="drop">CORTO (-)</option>
                                 </select>
@@ -67,7 +96,7 @@ export function CorrectionPanel({ reglaje, onChange, onApply }: CorrectionPanelP
                             </div>
                             <div className="corr-field" style={{ flex: 0.6 }}>
                                 <label>UNIT</label>
-                                <select id="imp_unit" className="tactical-input" value={reglaje.imp_unit} onChange={onChange} style={{ fontSize: '0.8rem' }}>
+                                <select id="imp_unit" className="tactical-input" value={reglaje.imp_unit || 'mils'} onChange={onChange} style={{ fontSize: '0.8rem' }}>
                                     <option value="mils">MIL</option>
                                     <option value="deg">deg</option>
                                 </select>

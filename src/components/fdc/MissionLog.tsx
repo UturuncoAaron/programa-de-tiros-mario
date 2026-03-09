@@ -1,12 +1,26 @@
 import { useState } from 'react';
 import type { LogTiro } from '../../views/Calculadora';
 
+// ============================================================
+// TIPOS E INTERFACES
+// ============================================================
 interface MissionLogProps {
     logs: LogTiro[];
     onDelete: (id: number) => void;
     onEdit: (log: LogTiro) => void; // onEdit ahora es fundamental
 }
 
+// Interfaz para el sub-componente DataBox
+interface DataBoxProps {
+    label: string;
+    value: string | number;
+    suffix?: string;
+    color: string;
+}
+
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
 export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
     const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -15,16 +29,16 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
     }
 
     return (
-        <div className="sidebar-section flexible-height" style={{ 
-            display: 'flex', flexDirection: 'column', minHeight: '180px', 
-            border: '1px solid #333', background: '#080808', fontFamily: 'Consolas, monospace' 
+        <div className="sidebar-section flexible-height" style={{
+            display: 'flex', flexDirection: 'column', minHeight: '180px',
+            border: '1px solid #333', background: '#080808', fontFamily: 'Consolas, monospace'
         }}>
-            
+
             {/* CABECERA TÁCTICA */}
-            <div style={{ 
-                background: 'linear-gradient(90deg, #1a1a1a 0%, #000 100%)', 
-                borderBottom: '1px solid #ffb300', 
-                padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
+            <div style={{
+                background: 'linear-gradient(90deg, #1a1a1a 0%, #000 100%)',
+                borderBottom: '1px solid #ffb300',
+                padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '8px', height: '8px', background: '#ffb300', borderRadius: '50%', boxShadow: '0 0 5px #ffb300' }}></div>
@@ -45,31 +59,31 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
                         const isExpanded = expandedId === h.id;
                         const results = h.fullData?.results;
                         const inputs = h.fullData?.inputs;
-                        
+
                         // Extraer datos clave para vista rápida
                         const viewDeriva = results?.cmd_deriva || '----';
                         const viewElev = results?.cmd_elev || '----';
                         const viewCharge = inputs?.carga_seleccionada === '-' ? results?.carga_rec : inputs?.carga_seleccionada;
 
                         return (
-                            <div key={h.id} style={{ 
-                                borderBottom: '1px solid #222', 
+                            <div key={h.id} style={{
+                                borderBottom: '1px solid #222',
                                 background: isExpanded ? '#111' : (index === 0 ? 'rgba(0, 50, 0, 0.2)' : 'transparent'),
                                 transition: 'background 0.2s'
                             }}>
-                                
+
                                 {/* --- FILA RESUMEN (Siempre visible) --- */}
-                                <div 
+                                <div
                                     onClick={() => toggleDetails(h.id)}
-                                    style={{ 
-                                        display: 'grid', gridTemplateColumns: '35px 1fr 70px', 
+                                    style={{
+                                        display: 'grid', gridTemplateColumns: '35px 1fr 70px',
                                         alignItems: 'center', minHeight: '45px', cursor: 'pointer',
                                         borderLeft: h.tipo === 'SALVA' ? '3px solid #ff4444' : '3px solid #00bcd4'
                                     }}
                                 >
                                     {/* ID */}
-                                    <div style={{ 
-                                        textAlign: 'center', fontSize: '0.7rem', color: '#666', fontWeight: 'bold' 
+                                    <div style={{
+                                        textAlign: 'center', fontSize: '0.7rem', color: '#666', fontWeight: 'bold'
                                     }}>
                                         #{h.id}
                                     </div>
@@ -77,7 +91,7 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
                                     {/* INFO CENTRAL */}
                                     <div style={{ padding: '4px 8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                                            <span style={{ 
+                                            <span style={{
                                                 fontSize: '0.6rem', padding: '1px 4px', borderRadius: '2px',
                                                 background: h.tipo === 'SALVA' ? '#330000' : '#002233',
                                                 color: h.tipo === 'SALVA' ? '#ff4444' : '#00bcd4',
@@ -86,7 +100,7 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
                                                 {h.tipo === 'SALVA' ? 'SALVA' : 'REGLAJE'}
                                             </span>
                                             <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                                                DER {viewDeriva} <span style={{color:'#444'}}>|</span> ALZ {viewElev}
+                                                DER {viewDeriva} <span style={{ color: '#444' }}>|</span> ALZ {viewElev}
                                             </span>
                                         </div>
                                         <div style={{ fontSize: '0.6rem', color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -98,14 +112,14 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
                                     <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
                                         {/* Botón de Edición (Solo para Reglajes) */}
                                         {h.tipo === 'REGLAJE' && (
-                                            <button 
+                                            <button
                                                 onClick={(e) => { e.stopPropagation(); onEdit(h); }}
                                                 style={{ background: '#111', border: '1px solid #333', color: '#ffb300', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}
                                                 title="Editar Reglaje"
                                             >✏️</button>
                                         )}
                                         {/* Botón de Eliminar (Para cualquier registro) */}
-                                        <button 
+                                        <button
                                             onClick={(e) => { e.stopPropagation(); onDelete(h.id); }}
                                             style={{ background: '#111', border: '1px solid #333', color: '#ff4444', width: '24px', height: '24px', borderRadius: '2px', cursor: 'pointer' }}
                                             title="Eliminar"
@@ -114,23 +128,23 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
                                 </div>
 
                                 {/* --- PANEL DE DETALLES (Expandible) --- */}
-                                {isExpanded && h.fullData && (
-                                    <div style={{ 
+                                {isExpanded && h.fullData && results && inputs && (
+                                    <div style={{
                                         background: '#050505', borderTop: '1px solid #222', borderBottom: '1px solid #333',
                                         padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px'
                                     }}>
-                                        
+
                                         {/* SECCIÓN 1: COMANDOS DE TIRO (Lo más importante) */}
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
                                             <DataBox label="DERIVA" value={viewDeriva} color="#ffb300" />
                                             <DataBox label="ELEVACIÓN" value={viewElev} color="#ffb300" />
-                                            <DataBox label="CARGA" value={viewCharge} color="#fff" />
+                                            <DataBox label="CARGA" value={viewCharge || 'N/A'} color="#fff" />
                                             <DataBox label="TIEMPO" value={results.cmd_time} suffix="s" color="#fff" />
                                         </div>
 
                                         {/* SECCIÓN 2: GEOMETRÍA Y CORRECCIÓN */}
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                            
+
                                             {/* Datos del Blanco */}
                                             <div style={{ border: '1px solid #222', padding: '5px' }}>
                                                 <div style={{ fontSize: '0.6rem', color: '#00bcd4', marginBottom: '4px', borderBottom: '1px solid #222' }}>DATOS BLANCO</div>
@@ -161,8 +175,8 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
                                         </div>
 
                                         {/* SECCIÓN 3: DETALLE COMPLETO (Texto) */}
-                                        <div style={{ 
-                                            fontSize: '0.65rem', color: '#666', background: '#000', 
+                                        <div style={{
+                                            fontSize: '0.65rem', color: '#666', background: '#000',
                                             padding: '4px', border: '1px dashed #333', fontStyle: 'italic'
                                         }}>
                                             LOG: {h.detalle} | T: {h.hora}
@@ -180,7 +194,7 @@ export function MissionLog({ logs, onDelete, onEdit }: MissionLogProps) {
 }
 
 // Sub-componente simple para las cajitas de datos
-const DataBox = ({ label, value, suffix = '', color }: any) => (
+const DataBox: React.FC<DataBoxProps> = ({ label, value, suffix = '', color }) => (
     <div style={{ background: '#111', border: '1px solid #333', padding: '4px', textAlign: 'center' }}>
         <div style={{ fontSize: '0.55rem', color: '#666', marginBottom: '2px' }}>{label}</div>
         <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: color }}>

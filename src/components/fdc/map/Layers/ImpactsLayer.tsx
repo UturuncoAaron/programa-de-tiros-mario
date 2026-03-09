@@ -5,140 +5,173 @@ import { ICONS, getDivIcon } from '../utils/mapIcons';
 import { calcularValoresError } from '../utils/mapMath';
 import type { LogTiro } from '../../../../views/Calculadora';
 
+// ============================================================
+// TIPOS
+// ============================================================
 interface Props {
-    map: L.Map;
-    mx: number; my: number;
-    tx: number; ty: number;
-    zona: number;
-    historial: LogTiro[];
-    showLabels: boolean;
+  map:        L.Map;
+  mx:         number;
+  my:         number;
+  tx:         number;
+  ty:         number;
+  zona:       number;
+  historial:  LogTiro[];
+  showLabels: boolean;
 }
 
+interface LayerRefs {
+  impacts?: L.LayerGroup;
+  labels?:  L.LayerGroup;
+}
+
+// ============================================================
+// HELPERS — fuera del componente para no recrearse en cada render
+// ============================================================
+
+/**
+ * El historial viene ordenado [Nuevo, ..., Viejo].
+ * Si hay un REGLAJE en la posición [i], la SALVA en [i+1] ya fue
+ * corregida → no la dibujamos (la pinta el REGLAJE con el impacto real).
+ */
+function filtrarLogsADibujar(historial: LogTiro[]): LogTiro[] {
+  return historial.filter((log, index) => {
+    if (log.tipo !== 'SALVA') return true;
+    const logMasNuevo = index > 0 ? historial[index - 1] : null;
+    return !(logMasNuevo && logMasNuevo.tipo === 'REGLAJE');
+  });
+}
+
+function buildPopupContent(
+  tituloPopup: string,
+  errorTac:    ReturnType<typeof calcularValoresError>,
+  hTx:         number,
+  hTy:         number,
+): string {
+  const colorAlcance   = errorTac.alcance   > 0 ? '#ff4444' : '#00e5ff';
+  const colorDireccion = errorTac.direccion > 0 ? '#ff4444' : '#00e5ff';
+  return `
+    <div style="text-align:center">
+      <b style="color:#ffb300">${tituloPopup}</b>
+      <hr style="border:0;border-top:1px solid #444;margin:4px 0">
+      <div style="display:grid;grid-template-columns:1fr;gap:2px;text-align:left">
+        <div>ALCANCE: <span style="color:${colorAlcance};float:right;font-weight:bold">
+          ${errorTac.alcance > 0 ? 'LARGO' : 'CORTO'} ${Math.abs(errorTac.alcance)}m
+        </span></div>
+        <div>DIRECCIÓN: <span style="color:${colorDireccion};float:right;font-weight:bold">
+          ${errorTac.direccion > 0 ? 'DER' : 'IZQ'} ${Math.abs(errorTac.direccion)}m
+        </span></div>
+      </div>
+      <div style="margin-top:5px;font-size:9px;color:#666">GRID: ${hTx} / ${hTy}</div>
+    </div>`;
+}
+
+// ============================================================
+// COMPONENTE
+// ============================================================
 export function ImpactsLayer({ map, mx, my, tx, ty, zona, historial, showLabels }: Props) {
-    const layersRef = useRef<{ impacts?: L.LayerGroup; labels?: L.LayerGroup }>({});
+  const layersRef = useRef<LayerRefs>({});
 
-    useEffect(() => {
-        if (!map) return;
-        
-        if (!layersRef.current.impacts) layersRef.current.impacts = L.layerGroup().addTo(map);
-        if (!layersRef.current.labels) layersRef.current.labels = L.layerGroup().addTo(map);
+  useEffect(() => {
+    if (!map) return;
 
-        layersRef.current.impacts.clearLayers();
-        layersRef.current.labels.clearLayers();
+    // Inicializar LayerGroups si aún no existen
+    if (!layersRef.current.impacts) layersRef.current.impacts = L.layerGroup().addTo(map);
+    if (!layersRef.current.labels)  layersRef.current.labels  = L.layerGroup().addTo(map);
 
-        const iconImpacto = getDivIcon(ICONS.IMPACTO, [16, 16]); // Icono pequeño
-        const targetPos = utmToLatLng(tx, ty, zona, true);
+    layersRef.current.impacts.clearLayers();
+    layersRef.current.labels.clearLayers();
 
-        const deltaY = ty - my; const deltaX = tx - mx;
-        const distTiro = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        let uX = 0, uY = 0;
-        if (distTiro > 0) { uX = deltaX / distTiro; uY = deltaY / distTiro; }
+    // ✅ ESLint fix: capturar ref en variable local para usarla en cleanup.
+    // El valor de layersRef.current puede cambiar entre el render y el cleanup,
+    // por lo que ESLint advierte usarlo directamente en el return.
+    const layers = layersRef.current;
 
-        // --- FILTRO TÁCTICO (NUEVO) ---
-        // El historial viene ordenado [Nuevo, ..., Viejo].
-        // Si hay un REGLAJE en la posición [i], significa que la SALVA en la posición [i+1]
-        // ya fue corregida y no debemos dibujarla (porque estaría en el blanco teórico, no en el real).
-        
-        const logsA_Dibujar = historial.filter((log, index) => {
-            // Si el log actual es una SALVA (Disparo)
-            if (log.tipo === 'SALVA') {
-                // Miramos si hay un log más nuevo (index - 1) que sea un REGLAJE
-                const logMasNuevo = index > 0 ? historial[index - 1] : null;
-                
-                // Si el disparo tiene una corrección encima, NO lo dibujamos.
-                // Dejamos que el REGLAJE sea el que pinte el impacto.
-                if (logMasNuevo && logMasNuevo.tipo === 'REGLAJE') {
-                    return false; 
-                }
-            }
-            return true;
-        });
+    const iconImpacto = getDivIcon(ICONS.IMPACTO, [16, 16]);
+    const targetPos   = utmToLatLng(tx, ty, zona, true);
 
-        // Ahora iteramos sobre la lista filtrada
-        logsA_Dibujar.forEach((log) => {
-            let hTx = 0, hTy = 0;
-            // Prioridad: Coordenadas de impacto real > Coordenadas teóricas (snapshot)
-            if (log.fullData && log.fullData.impacto) { hTx = log.fullData.impacto.x; hTy = log.fullData.impacto.y; }
-            else { hTx = log.snapshot.tx; hTy = log.snapshot.ty; }
+    // Vector unitario desde mortero → objetivo (para descomponer errores)
+    const deltaX  = tx - mx;
+    const deltaY  = ty - my;
+    const distTiro = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const uX = distTiro > 0 ? deltaX / distTiro : 0;
+    const uY = distTiro > 0 ? deltaY / distTiro : 0;
 
-            if (hTx > 0 && hTy > 0) {
-                const zonaUsar = log.snapshot?.zona || zona;
-                const hPos = utmToLatLng(hTx, hTy, zonaUsar, true);
-                
-                if (!isNaN(hPos[0])) {
-                    const errorTac = calcularValoresError(mx, my, tx, ty, hTx, hTy);
-                    
-                    // Lógica del número visual (Si es reglaje ID 2, mostramos TIRO 1)
-                    const numeroVisual = log.tipo === 'REGLAJE' ? (log.id - 1) : log.id;
-                    const tituloPopup = log.tipo === 'REGLAJE' ? `IMPACTO TIRO #${numeroVisual}` : `TIRO DE EFICACIA #${numeroVisual}`;
+    filtrarLogsADibujar(historial).forEach(log => {
+      // Prioridad: impacto real (del reglaje) > coordenadas teóricas del snapshot
+      const hTx = log.fullData?.impacto?.x ?? log.snapshot.tx;
+      const hTy = log.fullData?.impacto?.y ?? log.snapshot.ty;
 
-                    const popupContent = `
-                        <div style="text-align:center">
-                            <b style="color:#ffb300">${tituloPopup}</b>
-                            <hr style="border:0;border-top:1px solid #444;margin:4px 0">
-                            <div style="display:grid; grid-template-columns: 1fr; gap:2px; text-align:left">
-                                <div>ALCANCE: <span style="color:${errorTac.alcance > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.alcance > 0 ? 'LARGO' : 'CORTO'} ${Math.abs(errorTac.alcance)}m</span></div>
-                                <div>DIRECCIÓN: <span style="color:${errorTac.direccion > 0 ? '#ff4444' : '#00e5ff'}; float:right; font-weight:bold">${errorTac.direccion > 0 ? 'DER' : 'IZQ'} ${Math.abs(errorTac.direccion)}m</span></div>
-                            </div>
-                            <div style="margin-top:5px; font-size:9px; color:#666">GRID: ${hTx} / ${hTy}</div>
-                        </div>`;
-                    
-                    // Solo dibujamos el radio de daño si es un impacto confirmado (Reglaje) o si lo prefieres en todos
-                    L.circle(hPos, {
-                        radius: 25,
-                        color: '#ffaa00',
-                        fillColor: '#ffaa00',
-                        fillOpacity: 0.2,
-                        weight: 1,
-                        dashArray: '4, 4'
-                    }).addTo(layersRef.current.impacts!);
+      if (hTx <= 0 || hTy <= 0) return;
 
-                    L.marker(hPos, { icon: iconImpacto })
-                        .bindPopup(popupContent, { className: 'popup-tactico' })
-                        .addTo(layersRef.current.impacts!);
+      const zonaUsar = log.snapshot?.zona ?? zona;
+      const hPos     = utmToLatLng(hTx, hTy, zonaUsar, true);
+      if (isNaN(hPos[0])) return;
 
-                    if (showLabels && targetPos && !isNaN(targetPos[0])) {
-                        const distErrorTotal = Math.sqrt(Math.pow(hTx - tx, 2) + Math.pow(hTy - ty, 2));
-                        
-                        if (distErrorTotal > 10) {
-                            const errAlcanceScalar = ((hTx - tx) * uX) + ((hTy - ty) * uY);
-                            
-                            const vx = tx + errAlcanceScalar * uX;
-                            const vy = ty + errAlcanceScalar * uY;
-                            const vPos = utmToLatLng(vx, vy, zona, true);
+      const errorTac     = calcularValoresError(mx, my, tx, ty, hTx, hTy);
+      const numeroVisual = log.tipo === 'REGLAJE' ? log.id - 1 : log.id;
+      const tituloPopup  = log.tipo === 'REGLAJE'
+        ? `IMPACTO TIRO #${numeroVisual}`
+        : `TIRO DE EFICACIA #${numeroVisual}`;
 
-                            if (!isNaN(vPos[0])) {
-                                L.polyline([hPos, targetPos], { color: '#ff4444', weight: 1, dashArray: '4, 4', opacity: 0.5 }).addTo(layersRef.current.labels!);
-                                L.polyline([targetPos, vPos], { color: '#00e5ff', weight: 1.5, opacity: 0.8 }).addTo(layersRef.current.labels!);
-                                L.polyline([vPos, hPos], { color: '#ffb300', weight: 1.5, opacity: 0.8 }).addTo(layersRef.current.labels!);
+      // Radio de daño
+      L.circle(hPos, {
+        radius:      25,
+        color:       '#ffaa00',
+        fillColor:   '#ffaa00',
+        fillOpacity: 0.2,
+        weight:      1,
+        dashArray:   '4, 4',
+      }).addTo(layers.impacts!);
 
-                                const midV_T = [(vPos[0] + targetPos[0]) / 2, (vPos[1] + targetPos[1]) / 2] as L.LatLngExpression;
-                                const midH_V = [(hPos[0] + vPos[0]) / 2, (hPos[1] + vPos[1]) / 2] as L.LatLngExpression;
-                                const midHyp = [(hPos[0] + targetPos[0]) / 2, (hPos[1] + targetPos[1]) / 2] as L.LatLngExpression;
+      // Marcador con popup
+      L.marker(hPos, { icon: iconImpacto })
+        .bindPopup(buildPopupContent(tituloPopup, errorTac, hTx, hTy), { className: 'popup-tactico' })
+        .addTo(layers.impacts!);
 
-                                L.tooltip({ permanent: true, direction: 'center', className: 'error-label-tooltip', opacity: 1 })
-                                    .setContent(`<div class="tag-total">E: ${Math.round(distErrorTotal)}m</div>`)
-                                    .setLatLng(midHyp).addTo(layersRef.current.labels!);
+      // Líneas de error (solo si showLabels y hay distancia significativa)
+      if (!showLabels || !targetPos || isNaN(targetPos[0])) return;
 
-                                L.tooltip({ permanent: true, direction: 'center', className: 'error-label-tooltip', opacity: 1 })
-                                    .setContent(`<div class="tag-alcance">${errorTac.alcance > 0 ? 'L' : 'C'} ${Math.abs(errorTac.alcance)}</div>`)
-                                    .setLatLng(midV_T).addTo(layersRef.current.labels!);
+      const distErrorTotal = Math.sqrt((hTx - tx) ** 2 + (hTy - ty) ** 2);
+      if (distErrorTotal <= 10) return;
 
-                                L.tooltip({ permanent: true, direction: 'center', className: 'error-label-tooltip', opacity: 1 })
-                                    .setContent(`<div class="tag-direccion">${errorTac.direccion > 0 ? 'D' : 'I'} ${Math.abs(errorTac.direccion)}</div>`)
-                                    .setLatLng(midH_V).addTo(layersRef.current.labels!);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        
-        return () => {
-            if (layersRef.current.impacts) layersRef.current.impacts.clearLayers();
-            if (layersRef.current.labels) layersRef.current.labels.clearLayers();
-        }
-    }, [map, mx, my, tx, ty, zona, historial, showLabels]);
+      // Proyección del error de alcance sobre el vector de tiro
+      const errAlcanceScalar = (hTx - tx) * uX + (hTy - ty) * uY;
+      const vx   = tx + errAlcanceScalar * uX;
+      const vy   = ty + errAlcanceScalar * uY;
+      const vPos = utmToLatLng(vx, vy, zona, true);
+      if (isNaN(vPos[0])) return;
 
-    return null;
+      // Triángulo de error táctico
+      L.polyline([hPos, targetPos], { color: '#ff4444', weight: 1,   dashArray: '4, 4', opacity: 0.5 }).addTo(layers.labels!);
+      L.polyline([targetPos, vPos], { color: '#00e5ff', weight: 1.5, opacity: 0.8 }).addTo(layers.labels!);
+      L.polyline([vPos, hPos],      { color: '#ffb300', weight: 1.5, opacity: 0.8 }).addTo(layers.labels!);
+
+      // Etiquetas de error
+      const midHyp: L.LatLngExpression = [(hPos[0] + targetPos[0]) / 2, (hPos[1] + targetPos[1]) / 2];
+      const midV_T: L.LatLngExpression = [(vPos[0] + targetPos[0]) / 2, (vPos[1] + targetPos[1]) / 2];
+      const midH_V: L.LatLngExpression = [(hPos[0] + vPos[0])      / 2, (hPos[1] + vPos[1])      / 2];
+
+      const tooltipOpts: L.TooltipOptions = { permanent: true, direction: 'center', className: 'error-label-tooltip', opacity: 1 };
+
+      L.tooltip(tooltipOpts)
+        .setContent(`<div class="tag-total">E: ${Math.round(distErrorTotal)}m</div>`)
+        .setLatLng(midHyp).addTo(layers.labels!);
+
+      L.tooltip(tooltipOpts)
+        .setContent(`<div class="tag-alcance">${errorTac.alcance > 0 ? 'L' : 'C'} ${Math.abs(errorTac.alcance)}</div>`)
+        .setLatLng(midV_T).addTo(layers.labels!);
+
+      L.tooltip(tooltipOpts)
+        .setContent(`<div class="tag-direccion">${errorTac.direccion > 0 ? 'D' : 'I'} ${Math.abs(errorTac.direccion)}</div>`)
+        .setLatLng(midH_V).addTo(layers.labels!);
+    });
+
+    // ✅ Cleanup usa `layers` (variable local capturada), no layersRef.current
+    return () => {
+      layers.impacts?.clearLayers();
+      layers.labels?.clearLayers();
+    };
+  }, [map, mx, my, tx, ty, zona, historial, showLabels]);
+
+  return null;
 }

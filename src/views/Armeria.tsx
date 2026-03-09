@@ -3,7 +3,20 @@ import * as XLSX from 'xlsx-js-style';
 import { ARSENAL, sincronizarBaseDeDatos } from '../logic/database';
 
 // ============================================================
-// TIPOS
+// DECLARACIÓN GLOBAL PARA ELECTRON
+// ============================================================
+declare global {
+  interface Window {
+    require?: (module: 'electron') => {
+      ipcRenderer: {
+        invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+      };
+    };
+  }
+}
+
+// ============================================================
+// TIPOS E INTERFACES
 // ============================================================
 interface MetaMunicion {
   id: string;
@@ -22,7 +35,28 @@ interface BackupInfo {
   tamaño: string;
 }
 
+// Interfaz estricta para leer el Excel sin usar 'any'
+interface FilaExcel {
+  CARGA?: number;
+  DISTANCIA?: number;
+  ELEVACION?: number;
+  TIEMPO?: number;
+  V_TRAV?: number;
+  V_COLA?: number;
+  VI_PORC?: number;
+  TEMP?: number;
+  PESO?: number;
+  PRESION?: number;
+}
+
 type ModoEditor = 'MANUAL' | 'EXCEL' | 'CODIGO';
+
+// Interfaz para la respuesta genérica de Electron
+interface IpcResponse {
+    status: 'OK' | 'ERROR';
+    message?: string;
+    [key: string]: unknown;
+}
 
 // ============================================================
 // CONSTANTES
@@ -51,13 +85,11 @@ const THEME = {
 // ============================================================
 // ELECTRON HELPER
 // ============================================================
-const electron = typeof window !== 'undefined' && (window as any).require
-  ? (window as any).require('electron')
-  : null;
+const electron = typeof window !== 'undefined' && window.require ? window.require('electron') : null;
 
-const ipc = async (canal: string, ...args: any[]): Promise<any> => {
+const ipc = async (canal: string, ...args: unknown[]): Promise<IpcResponse> => {
   if (!electron) return { status: 'ERROR', message: 'No Electron' };
-  return electron.ipcRenderer.invoke(canal, ...args);
+  return (await electron.ipcRenderer.invoke(canal, ...args)) as IpcResponse;
 };
 
 // ============================================================
@@ -66,7 +98,7 @@ const ipc = async (canal: string, ...args: any[]): Promise<any> => {
 export function Armeria() {
 
   // --- ESTADOS ---
-  const [municiones,        setMuniciones]        = useState<string[]>([]);
+  const [municiones,        setMuniciones]       = useState<string[]>([]);
   const [seleccionado,      setSeleccionado]       = useState<string | null>(null);
   const [modo,              setModo]               = useState<ModoEditor>('MANUAL');
   const [procesando,        setProcesando]         = useState(false);
@@ -80,15 +112,19 @@ export function Armeria() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- INICIALIZACIÓN ---
-  useEffect(() => {
-    cargarLista();
-    ipc('get-log-path').then((p: string) => { if (p) setLogPath(p); });
-  }, []);
-
   const cargarLista = useCallback(() => {
     setMuniciones(Object.keys(ARSENAL));
   }, []);
+
+  // --- INICIALIZACIÓN ---
+  useEffect(() => {
+    cargarLista();
+    ipc('get-log-path').then((res) => { 
+     
+        const p = res.p || res; 
+        if (typeof p === 'string' && p) setLogPath(p); 
+    });
+  }, [cargarLista]);
 
   // --- SELECCIÓN Y LIMPIEZA ---
   const handleSelect = useCallback((id: string) => {
@@ -159,8 +195,9 @@ export function Armeria() {
       } else {
         throw new Error(res.message);
       }
-    } catch (e: any) {
-      alert('❌ Error al guardar: ' + e.message);
+    } catch (e: unknown) {
+      const mensaje = e instanceof Error ? e.message : 'Error desconocido al guardar.';
+      alert('❌ Error al guardar: ' + mensaje);
     } finally {
       setProcesando(false);
     }
@@ -204,9 +241,11 @@ export function Armeria() {
     reader.onload = async (evt) => {
       try {
         const wb = XLSX.read(evt.target?.result, { type: 'binary' });
-        const data = XLSX.utils.sheet_to_json<any>(wb.Sheets[wb.SheetNames[0]]);
+        const data = XLSX.utils.sheet_to_json<FilaExcel>(wb.Sheets[wb.SheetNames[0]]);
+        
         const nuevasCargas: Record<number, number[][]> = {};
-        data.forEach((row: any) => {
+        
+        data.forEach((row) => {
           const c = row['CARGA'];
           if (c == null) return;
           if (!nuevasCargas[c]) nuevasCargas[c] = [];
@@ -247,7 +286,8 @@ export function Armeria() {
   }, [cargaActiva]);
 
   const addCarga = useCallback(() => {
-    const next = Math.max(...Object.keys(cargasManual).map(Number)) + 1;
+    const keys = Object.keys(cargasManual);
+    const next = keys.length > 0 ? Math.max(...keys.map(Number)) + 1 : 1;
     setCargasManual(prev => ({ ...prev, [next]: [] }));
     setCargaActiva(next);
   }, [cargasManual]);
@@ -281,7 +321,9 @@ export function Armeria() {
   // --- BACKUPS ---
   const cargarBackups = useCallback(async () => {
     const res = await ipc('get-backups');
-    if (res.status === 'OK') setBackups(res.backups);
+    if (res.status === 'OK' && res.backups) {
+      setBackups(res.backups as BackupInfo[]);
+    }
   }, []);
 
   const handleBackupManual = useCallback(async () => {
