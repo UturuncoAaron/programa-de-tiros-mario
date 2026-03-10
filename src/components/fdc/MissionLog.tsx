@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { LogTiro } from '../../views/Calculadora';
+import type { LogTiro } from '../../types/fdc';
 
 // ============================================================
 // TIPOS E INTERFACES

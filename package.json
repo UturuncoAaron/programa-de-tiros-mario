@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "description": "Sistema de calculo de tiro para morteros 81mm",
   "author": "EBIM",
-  "type": "module",
-  "main": "electron/main.cjs",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run start:vite\" \"npm run start:electron\"",
     "start:vite": "vite",

@@ -3,7 +3,7 @@ import L from 'leaflet';
 import { utmToLatLng } from '../../../../logic/calculos';
 import { ICONS, getDivIcon } from '../utils/mapIcons';
 import { calcularValoresError } from '../utils/mapMath';
-import type { LogTiro } from '../../../../views/Calculadora';
+import type { LogTiro } from '../../../../types/fdc';
 
 // ============================================================
 // TIPOS

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { LogTiro } from '../../../views/Calculadora';
+import type { LogTiro } from '../../../types/fdc';
 
 import { MapControls } from './MapControls';
 import { GridLayer } from './Layers/GridLayer';

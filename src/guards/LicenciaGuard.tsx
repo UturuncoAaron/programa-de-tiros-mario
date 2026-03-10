@@ -21,7 +21,7 @@ import {
   verificarLicencia,
   activarLicencia,
   type ResultadoLicencia,
-} from '../logic/licencia';
+} from '../infrastructure/licencia';
 
 // ── Constantes ────────────────────────────────────────────────
 

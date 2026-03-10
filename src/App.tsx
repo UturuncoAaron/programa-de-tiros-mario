@@ -1,5 +1,5 @@
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar } from './components/ui/Sidebar';
 import { Calculadora } from './views/Calculadora';
 import { Registros } from './views/Registros';
 import './index.css';
@@ -7,7 +7,7 @@ import { Tablas } from './views/Tablas';
 import { Convertidor } from './views/Convertidor';
 import { Manual } from './views/Manual';
 import { Armeria } from './views/Armeria';
-import LicenciaGuard from './components/LicenciaGuard';
+import LicenciaGuard from './guards/LicenciaGuard';
 
 // App ya monta con ARSENAL sincronizado (lo garantiza main.tsx).
 // No se necesita ningún estado de carga aquí.
