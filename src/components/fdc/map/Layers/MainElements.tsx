@@ -7,35 +7,44 @@ import { ICONS, getDivIcon } from '../utils/mapIcons';
 // TIPOS
 // ============================================================
 interface Props {
-  map:              L.Map;
-  mx:               number;
-  my:               number;
-  tx:               number;
-  ty:               number;
-  ox:               number;
-  oy:               number;
-  zona:             number;
+  map: L.Map;
+  mx: number;
+  my: number;
+  tx: number;
+  ty: number;
+  ox: number;
+  oy: number;
+  zona: number;
   orientacion_base: number;
-  rangoCarga?:      { min: number; max: number };
+  rangoCarga?: { min: number; max: number };
 }
 
 interface MarkerRefs {
-  m?:    L.Marker;
-  t?:    L.Marker;
-  o?:    L.Marker;
+  m?: L.Marker;
+  t?: L.Marker;
+  o?: L.Marker;
   line?: L.Polyline;
 }
 
 interface LayerRefs {
   orientationLine?: L.Polyline;
-  rangeRings?:      L.LayerGroup;
+  rangeRings?: L.LayerGroup;
 }
 
 // ============================================================
-// CONSTANTES
+// CONSTANTES — fuera del componente para no recrearse
 // ============================================================
-const ES_SUR        = true;  // Perú siempre hemisferio sur
-const ORIENT_LENGTH = 5000;  // Metros de la línea de orientación base
+const ES_SUR = true;   // Perú siempre hemisferio sur
+const ORIENT_LENGTH = 5000;   // Metros de la línea de orientación base
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+/** Devuelve true si ambas coordenadas UTM son válidas (no-cero, no-NaN). */
+function hasValidCoords(x: number, y: number): boolean {
+  return x !== 0 && y !== 0 && !isNaN(x) && !isNaN(y);
+}
 
 // ============================================================
 // COMPONENTE
@@ -44,9 +53,8 @@ export function MainElements({
   map, mx, my, tx, ty, ox, oy,
   zona, orientacion_base, rangoCarga,
 }: Props) {
-  const markersRef      = useRef<MarkerRefs>({});
-  const layersRef       = useRef<LayerRefs>({});
-  const hasCenteredRef  = useRef(false);
+  const markersRef = useRef<MarkerRefs>({});
+  const layersRef = useRef<LayerRefs>({});
 
   useEffect(() => {
     if (!map) return;
@@ -56,21 +64,21 @@ export function MainElements({
       layersRef.current.rangeRings = L.layerGroup().addTo(map);
     }
 
-    // ✅ ESLint fix: capturar ref en variable local para el cleanup.
-    // layersRef.current puede cambiar entre el render y el cleanup.
-    const layers  = layersRef.current;
+    // ✅ Capturar refs en variables locales para el cleanup.
+    // layersRef.current puede mutar entre render y cleanup.
+    const layers = layersRef.current;
     const markers = markersRef.current;
 
-    // Guard: necesitamos posiciones válidas para dibujar
-    if (!mx || !my || !tx || !ty) return;
+    // Guard: necesitamos posición válida del mortero y del objetivo
+    if (!hasValidCoords(mx, my) || !hasValidCoords(tx, ty)) return;
 
     try {
       const mPos = utmToLatLng(mx, my, zona, ES_SUR);
       const tPos = utmToLatLng(tx, ty, zona, ES_SUR);
       if (isNaN(mPos[0]) || isNaN(tPos[0])) return;
 
-      const iconMortero    = getDivIcon(ICONS.MORTERO,    [24, 24]);
-      const iconObjetivo   = getDivIcon(ICONS.OBJETIVO,   [24, 24]);
+      const iconMortero = getDivIcon(ICONS.MORTERO, [24, 24]);
+      const iconObjetivo = getDivIcon(ICONS.OBJETIVO, [24, 24]);
       const iconObservador = getDivIcon(ICONS.OBSERVADOR, [24, 24]);
 
       // ── Mortero ──────────────────────────────────────────
@@ -88,7 +96,7 @@ export function MainElements({
       }
 
       // ── Observador (opcional) ─────────────────────────────
-      if (ox > 0 && oy > 0) {
+      if (hasValidCoords(ox, oy)) {
         const oPos = utmToLatLng(ox, oy, zona, ES_SUR);
         if (!isNaN(oPos[0])) {
           if (!markers.o) {
@@ -97,15 +105,19 @@ export function MainElements({
             markers.o.setLatLng(oPos).setIcon(iconObservador);
           }
         }
+      } else if (markers.o) {
+        // Limpiar el marcador del observador si ya no tiene coords válidas
+        markers.o.remove();
+        delete markers.o;
       }
 
       // ── Línea Mortero → Objetivo ──────────────────────────
       if (!markers.line) {
         markers.line = L.polyline([mPos, tPos], {
-          color:     '#00ffcc',
+          color: '#00ffcc',
           dashArray: '8, 8',
-          weight:    1,
-          opacity:   0.8,
+          weight: 1,
+          opacity: 0.8,
         }).addTo(map);
       } else {
         markers.line.setLatLngs([mPos, tPos]);
@@ -113,8 +125,8 @@ export function MainElements({
 
       // ── Línea de Orientación Base ─────────────────────────
       const angleDeg = (orientacion_base * 360) / 6400;
-      const rad      = angleDeg * (Math.PI / 180);
-      const destPos  = utmToLatLng(
+      const rad = angleDeg * (Math.PI / 180);
+      const destPos = utmToLatLng(
         mx + ORIENT_LENGTH * Math.sin(rad),
         my + ORIENT_LENGTH * Math.cos(rad),
         zona,
@@ -123,10 +135,10 @@ export function MainElements({
 
       if (!layers.orientationLine) {
         layers.orientationLine = L.polyline([mPos, destPos], {
-          color:     '#ffcc00',
-          weight:    1,
+          color: '#ffcc00',
+          weight: 1,
           dashArray: '2, 4',
-          opacity:   0.6,
+          opacity: 0.6,
         }).addTo(map);
         layers.orientationLine.bindTooltip(
           `AZ BASE: ${orientacion_base}`,
@@ -141,42 +153,52 @@ export function MainElements({
       layers.rangeRings?.clearLayers();
       if (rangoCarga && rangoCarga.max > 0) {
         L.circle(mPos, {
-          radius: rangoCarga.max, color: '#4dff88',
-          weight: 1, fill: false, dashArray: '5, 10', opacity: 0.5,
+          radius: rangoCarga.max,
+          color: '#4dff88',
+          weight: 1,
+          fill: false,
+          dashArray: '5, 10',
+          opacity: 0.5,
         }).addTo(layers.rangeRings!);
+
         L.circle(mPos, {
-          radius: rangoCarga.min, color: '#ff4444',
-          weight: 1, fill: false, dashArray: '5, 10', opacity: 0.5,
+          radius: rangoCarga.min,
+          color: '#ff4444',
+          weight: 1,
+          fill: false,
+          dashArray: '5, 10',
+          opacity: 0.5,
         }).addTo(layers.rangeRings!);
-      }
-
-      // ── Centrar mapa (solo la primera vez) ────────────────
-      if (!hasCenteredRef.current) {
-        const bounds = L.latLngBounds([mPos, tPos]);
-        if (ox > 0 && oy > 0) bounds.extend(utmToLatLng(ox, oy, zona, ES_SUR));
-
-        const timer = setTimeout(() => {
-          map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
-        }, 100);
-
-        hasCenteredRef.current = true;
-
-        // Limpiar el timeout si el componente se desmonta antes de que dispare
-        return () => {
-          clearTimeout(timer);
-          layers.rangeRings?.clearLayers();
-        };
       }
 
     } catch (e) {
       console.error('[MainElements] Error dibujando elementos:', e);
     }
 
-    // ✅ Cleanup usa `layers` (capturado arriba), no layersRef.current
     return () => {
       layers.rangeRings?.clearLayers();
     };
   }, [map, mx, my, tx, ty, ox, oy, zona, orientacion_base, rangoCarga]);
+
+  // Cleanup completo al desmontar
+  useEffect(() => {
+    return () => {
+      const markers = markersRef.current;
+      const layers = layersRef.current;
+
+      markers.m?.remove();
+      markers.t?.remove();
+      markers.o?.remove();
+      markers.line?.remove();
+      layers.orientationLine?.remove();
+      layers.rangeRings?.clearLayers();
+      layers.rangeRings?.remove();
+
+      // Vaciar refs para evitar memory leaks si el componente se remonta
+      markersRef.current = {};
+      layersRef.current = {};
+    };
+  }, []);
 
   return null;
 }

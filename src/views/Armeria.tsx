@@ -56,6 +56,13 @@ interface IpcResponse {
   [key: string]: unknown;
 }
 
+// Interfaz para el estado de nuestro Modal Custom
+interface ModalState {
+  tipo: 'ALERT' | 'CONFIRM';
+  mensaje: string;
+  resolver: (value: boolean) => void;
+}
+
 // ============================================================
 // CONSTANTES
 // ============================================================
@@ -65,22 +72,20 @@ const META_INICIAL: MetaMunicion = {
 
 const CARGAS_INICIAL: Record<number, number[][]> = { 0: [] };
 
-// Columnas completas (con meteo) y columnas básicas (sin meteo)
-const COLUMNAS_CON_METEO  = ['DIST', 'ELEV', 'TIME', 'V.TRAV', 'V.COLA', 'VI%', 'TEMP', 'PESO', 'PRES'];
-const COLUMNAS_SIN_METEO  = ['DIST', 'ELEV', 'TIME'];
-// Índices visibles cuando NO hay meteo
+const COLUMNAS_CON_METEO = ['DIST', 'ELEV', 'TIME', 'V.TRAV', 'V.COLA', 'VI%', 'TEMP', 'PESO', 'PRES'];
+const COLUMNAS_SIN_METEO = ['DIST', 'ELEV', 'TIME'];
 const IDX_SIN_METEO = [0, 1, 2];
 
 const THEME = {
-  bgMain:    '#050a0d',
-  bgPanel:   '#0f1418',
-  bgDark:    '#0a0e11',
-  border:    '#2a3b45',
-  textMain:  '#a0b0b8',
-  textAccent:'#ffb300',
-  textCyan:  '#00e5ff',
+  bgMain: '#050a0d',
+  bgPanel: '#0f1418',
+  bgDark: '#0a0e11',
+  border: '#2a3b45',
+  textMain: '#a0b0b8',
+  textAccent: '#ffb300',
+  textCyan: '#00e5ff',
   textGreen: '#00ff00',
-  danger:    '#ff4444',
+  danger: '#ff4444',
   borderRed: '#3a0000',
 };
 
@@ -89,51 +94,51 @@ const THEME = {
 // ============================================================
 const IconPlus = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-    <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </svg>
 );
 
 const IconSave = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <rect x="1" y="1" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.5"/>
-    <rect x="3" y="1" width="6" height="4" fill="currentColor"/>
-    <rect x="3" y="7" width="8" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="1" y="1" width="12" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" />
+    <rect x="3" y="1" width="6" height="4" fill="currentColor" />
+    <rect x="3" y="7" width="8" height="5" rx="0.5" stroke="currentColor" strokeWidth="1.2" />
   </svg>
 );
 
 const IconTrash = () => (
   <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-    <path d="M2 3.5h9M5 3.5V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M10.5 3.5l-.8 7a.5.5 0 01-.5.5H3.8a.5.5 0 01-.5-.5l-.8-7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <path d="M2 3.5h9M5 3.5V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5v1M10.5 3.5l-.8 7a.5.5 0 01-.5.5H3.8a.5.5 0 01-.5-.5l-.8-7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
   </svg>
 );
 
 const IconUpload = () => (
   <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-    <rect x="4" y="4" width="32" height="32" rx="4" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2"/>
-    <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M13 30h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <rect x="4" y="4" width="32" height="32" rx="4" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 2" />
+    <path d="M20 26V14M14 20l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M13 30h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
 
 const IconWarning = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M7 1.5L13 12.5H1L7 1.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-    <path d="M7 5.5v3M7 10v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M7 1.5L13 12.5H1L7 1.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    <path d="M7 5.5v3M7 10v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
 
 const IconBackup = () => (
   <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-    <path d="M6.5 1a5.5 5.5 0 100 11A5.5 5.5 0 006.5 1z" stroke="currentColor" strokeWidth="1.3"/>
-    <path d="M6.5 4v3l2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6.5 1a5.5 5.5 0 100 11A5.5 5.5 0 006.5 1z" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M6.5 4v3l2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const IconNoMeteo = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M7 2a3 3 0 013 3c0 .5-.1 1-.3 1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-    <path d="M3 9.5A3.5 3.5 0 0110 7.5h.5a2 2 0 010 4H4a2.5 2.5 0 01-1-4.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-    <path d="M2 2l10 10" stroke="#ff4444" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M7 2a3 3 0 013 3c0 .5-.1 1-.3 1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    <path d="M3 9.5A3.5 3.5 0 0110 7.5h.5a2 2 0 010 4H4a2.5 2.5 0 01-1-4.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    <path d="M2 2l10 10" stroke="#ff4444" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
 
@@ -147,15 +152,8 @@ const ipc = async (canal: string, ...args: unknown[]): Promise<IpcResponse> => {
   return (await electron.ipcRenderer.invoke(canal, ...args)) as IpcResponse;
 };
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-/** Crea una fila nueva: si no requiere meteo, cols 3-8 = 0 automáticamente */
 function crearFilaVacia(conMeteo: boolean): number[] {
-  return conMeteo
-    ? [0, 0, 0, 0, 0, 0, 0, 0, 0]
-    : [0, 0, 0, 0, 0, 0, 0, 0, 0]; // siempre 9 cols internamente
+  return conMeteo ? [0, 0, 0, 0, 0, 0, 0, 0, 0] : [0, 0, 0, 0, 0, 0, 0, 0, 0];
 }
 
 // ============================================================
@@ -163,23 +161,53 @@ function crearFilaVacia(conMeteo: boolean): number[] {
 // ============================================================
 export function Armeria() {
 
-  const [municiones,     setMuniciones]     = useState<string[]>([]);
-  const [seleccionado,   setSeleccionado]   = useState<string | null>(null);
-  const [modo,           setModo]           = useState<ModoEditor>('MANUAL');
-  const [procesando,     setProcesando]     = useState(false);
-  const [meta,           setMeta]           = useState<MetaMunicion>(META_INICIAL);
-  const [rawCode,        setRawCode]        = useState('');
-  const [cargasManual,   setCargasManual]   = useState<Record<number, number[][]>>(CARGAS_INICIAL);
-  const [cargaActiva,    setCargaActiva]    = useState<number>(0);
-  const [logPath,        setLogPath]        = useState('');
-  const [backups,        setBackups]        = useState<BackupInfo[]>([]);
+  const [municiones, setMuniciones] = useState<string[]>([]);
+  const [seleccionado, setSeleccionado] = useState<string | null>(null);
+  const [modo, setModo] = useState<ModoEditor>('MANUAL');
+  const [procesando, setProcesando] = useState(false);
+  const [meta, setMeta] = useState<MetaMunicion>(META_INICIAL);
+  const [rawCode, setRawCode] = useState('');
+  const [cargasManual, setCargasManual] = useState<Record<number, number[][]>>(CARGAS_INICIAL);
+  const [cargaActiva, setCargaActiva] = useState<number>(0);
+  const [logPath, setLogPath] = useState('');
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [mostrarBackups, setMostrarBackups] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // ESTADO PARA NUESTRO MODAL CUSTOM
+  const [modalActivo, setModalActivo] = useState<ModalState | null>(null);
 
-  // Columnas visibles según meteo
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const columnas = meta.meteo ? COLUMNAS_CON_METEO : COLUMNAS_SIN_METEO;
 
+  // ── FUNCIONES DEL MODAL (PROMESAS) ────────────────────────
+  // Estas funciones reemplazan a alert() y confirm()
+  const customAlert = useCallback((mensaje: string): Promise<void> => {
+    return new Promise(resolve => {
+      setModalActivo({
+        tipo: 'ALERT',
+        mensaje,
+        resolver: () => {
+          setModalActivo(null);
+          resolve();
+        }
+      });
+    });
+  }, []);
+
+  const customConfirm = useCallback((mensaje: string): Promise<boolean> => {
+    return new Promise(resolve => {
+      setModalActivo({
+        tipo: 'CONFIRM',
+        mensaje,
+        resolver: (valor) => {
+          setModalActivo(null);
+          resolve(valor);
+        }
+      });
+    });
+  }, []);
+
+  // ── INICIALIZACIÓN ────────────────────────────────────────
   const cargarLista = useCallback(() => {
     setMuniciones(Object.keys(ARSENAL));
   }, []);
@@ -213,8 +241,14 @@ export function Armeria() {
 
   // ── GUARDADO ──────────────────────────────────────────────
   const guardarEnBaseDeDatos = useCallback(async (cargasProcesadas: Record<number, number[][]>) => {
-    if (!meta.id.trim() || !meta.desc.trim()) { alert('❌ Ingresa un ID y Descripción.'); return; }
-    if (Object.keys(cargasProcesadas).length === 0) { alert('❌ No hay datos balísticos para guardar.'); return; }
+    if (!meta.id.trim() || !meta.desc.trim()) {
+      await customAlert('❌ Ingresa un ID y Descripción.');
+      return;
+    }
+    if (Object.keys(cargasProcesadas).length === 0) {
+      await customAlert('❌ No hay datos balísticos para guardar.');
+      return;
+    }
 
     setProcesando(true);
     try {
@@ -227,48 +261,54 @@ export function Armeria() {
       }
 
       const nuevaMunicion = {
-        descripcion:   meta.desc,
+        descripcion: meta.desc,
         requiereMeteo: meta.meteo,
-        standar:       { presion: meta.pres, temp: meta.temp, peso: meta.peso, vel_ini: meta.vel },
-        cargas:        cargasProcesadas,
-        rangos:        rangosCalculados,
+        standar: { presion: meta.pres, temp: meta.temp, peso: meta.peso, vel_ini: meta.vel },
+        cargas: cargasProcesadas,
+        rangos: rangosCalculados,
       };
 
       const res = await ipc('save-municion', meta.id.toUpperCase(), nuevaMunicion);
+
       if (res.status === 'OK') {
-        alert(`✅ Munición ${meta.id.toUpperCase()} guardada.`);
         await sincronizarBaseDeDatos();
         cargarLista();
         handleSelect(meta.id.toUpperCase());
+        await customAlert(`✅ Munición ${meta.id.toUpperCase()} guardada.`);
       } else {
         throw new Error(res.message);
       }
     } catch (e: unknown) {
-      alert('❌ Error: ' + (e instanceof Error ? e.message : 'desconocido'));
+      await customAlert('❌ Error: ' + (e instanceof Error ? e.message : 'desconocido'));
     } finally {
       setProcesando(false);
     }
-  }, [meta, cargarLista, handleSelect]);
+  }, [meta, cargarLista, handleSelect, customAlert]);
 
   // ── ELIMINAR ──────────────────────────────────────────────
   const handleDelete = useCallback(async () => {
     if (!seleccionado) return;
-    if (!window.confirm(`⚠ ¿Eliminar permanentemente [ ${seleccionado} ]?`)) return;
+    const confirmado = await customConfirm(`⚠ ¿Eliminar permanentemente [ ${seleccionado} ]?`);
+    if (!confirmado) return;
+
     setProcesando(true);
     try {
       const res = await ipc('delete-municion', seleccionado);
-      if (res.status === 'OK') { await sincronizarBaseDeDatos(); cargarLista(); handleLimpiar(); }
-      else alert('❌ ' + res.message);
+      if (res.status === 'OK') {
+        await sincronizarBaseDeDatos(); cargarLista(); handleLimpiar();
+      } else {
+        await customAlert('❌ ' + res.message);
+      }
     } finally { setProcesando(false); }
-  }, [seleccionado, cargarLista, handleLimpiar]);
+  }, [seleccionado, cargarLista, handleLimpiar, customConfirm, customAlert]);
 
   // ── MODO CÓDIGO ───────────────────────────────────────────
-  const ejecutarModoCodigo = useCallback(() => {
+  const ejecutarModoCodigo = useCallback(async () => {
     try {
       const cargas = new Function('return {' + rawCode + '}')();
       guardarEnBaseDeDatos(cargas);
-    } catch { alert('❌ Error de Sintaxis en el JSON.'); }
-  }, [rawCode, guardarEnBaseDeDatos]);
+    } catch { await customAlert('❌ Error de Sintaxis en el JSON.'); }
+  }, [rawCode, guardarEnBaseDeDatos, customAlert]);
 
   // ── MODO EXCEL ────────────────────────────────────────────
   const ejecutarModoExcel = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,7 +318,7 @@ export function Armeria() {
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
-        const wb   = XLSX.read(evt.target?.result, { type: 'binary' });
+        const wb = XLSX.read(evt.target?.result, { type: 'binary' });
         const data = XLSX.utils.sheet_to_json<FilaExcel>(wb.Sheets[wb.SheetNames[0]]);
         const nuevasCargas: Record<number, number[][]> = {};
         data.forEach(row => {
@@ -287,25 +327,24 @@ export function Armeria() {
           if (!nuevasCargas[c]) nuevasCargas[c] = [];
           nuevasCargas[c].push([
             Number(row['DISTANCIA'] || 0), Number(row['ELEVACION'] || 0),
-            Number(row['TIEMPO']    || 0), Number(row['V_TRAV']    || 0),
-            Number(row['V_COLA']    || 0), Number(row['VI_PORC']   || 0),
-            Number(row['TEMP']      || 0), Number(row['PESO']      || 0),
-            Number(row['PRESION']   || 0),
+            Number(row['TIEMPO'] || 0), Number(row['V_TRAV'] || 0),
+            Number(row['V_COLA'] || 0), Number(row['VI_PORC'] || 0),
+            Number(row['TEMP'] || 0), Number(row['PESO'] || 0),
+            Number(row['PRESION'] || 0),
           ]);
         });
         await guardarEnBaseDeDatos(nuevasCargas);
-      } catch { alert('❌ Error leyendo Excel. Usa la plantilla estándar.'); }
+      } catch { await customAlert('❌ Error leyendo Excel. Usa la plantilla estándar.'); }
       finally {
         setProcesando(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
     reader.readAsBinaryString(file);
-  }, [guardarEnBaseDeDatos]);
+  }, [guardarEnBaseDeDatos, customAlert]);
 
   // ── MODO MANUAL ───────────────────────────────────────────
   const updateCelda = useCallback((rowIdx: number, colIdx: number, val: number) => {
-    // colIdx aquí es el índice VISUAL — si sin meteo, mapeamos a índice real
     const idxReal = meta.meteo ? colIdx : IDX_SIN_METEO[colIdx];
     setCargasManual(prev => ({
       ...prev,
@@ -317,7 +356,6 @@ export function Armeria() {
 
   const addFila = useCallback(() => {
     const nuevaFila = crearFilaVacia(meta.meteo);
-    // Si no tiene meteo, las cols 3-8 ya quedan en 0 pero están en la fila completa
     setCargasManual(prev => ({
       ...prev,
       [cargaActiva]: [...prev[cargaActiva], nuevaFila],
@@ -326,7 +364,7 @@ export function Armeria() {
 
   const addCarga = useCallback(() => {
     const keys = Object.keys(cargasManual);
-    const next  = keys.length > 0 ? Math.max(...keys.map(Number)) + 1 : 1;
+    const next = keys.length > 0 ? Math.max(...keys.map(Number)) + 1 : 1;
     setCargasManual(prev => ({ ...prev, [next]: [] }));
     setCargaActiva(next);
   }, [cargasManual]);
@@ -340,17 +378,23 @@ export function Armeria() {
 
   // ── RESET FÁBRICA ─────────────────────────────────────────
   const handleResetFabrica = useCallback(async () => {
-    if (!window.confirm('⚠ RESTAURAR DATOS DE FÁBRICA ⚠\n\nSe eliminarán todas las municiones personalizadas\ny se restaurarán W87, APC85 y ECIA120.\n\n¿Confirmar?')) return;
-    if (!window.confirm('⚠ ÚLTIMA ADVERTENCIA ⚠\n\n¿Estás SEGURO? Esta acción no se puede deshacer.')) return;
+    const ok1 = await customConfirm('⚠ RESTAURAR DATOS DE FÁBRICA ⚠\n\nSe eliminarán todas las municiones personalizadas\ny se restaurarán W87, APC85 y ECIA120.\n\n¿Confirmar?');
+    if (!ok1) return;
+
+    const ok2 = await customConfirm('⚠ ÚLTIMA ADVERTENCIA ⚠\n\n¿Estás SEGURO? Esta acción no se puede deshacer.');
+    if (!ok2) return;
+
     setProcesando(true);
     try {
       const res = await ipc('reset-arsenal');
       if (res.status === 'OK') {
         await sincronizarBaseDeDatos(); cargarLista(); handleLimpiar();
-        alert(`✅ Arsenal restaurado.\n${res.count} municiones de fábrica cargadas.`);
-      } else alert('❌ ' + res.message);
+        await customAlert(`✅ Arsenal restaurado.\n${res.count} municiones de fábrica cargadas.`);
+      } else {
+        await customAlert('❌ ' + res.message);
+      }
     } finally { setProcesando(false); }
-  }, [cargarLista, handleLimpiar]);
+  }, [cargarLista, handleLimpiar, customConfirm, customAlert]);
 
   // ── BACKUPS ───────────────────────────────────────────────
   const cargarBackups = useCallback(async () => {
@@ -362,22 +406,30 @@ export function Armeria() {
     setProcesando(true);
     try {
       const res = await ipc('backup-manual');
-      if (res.status === 'OK') { alert(`✅ Backup creado:\n${res.path}`); cargarBackups(); }
-      else alert('❌ ' + res.message);
+      if (res.status === 'OK') {
+        cargarBackups();
+        await customAlert(`✅ Backup creado:\n${res.path}`);
+      } else {
+        await customAlert('❌ ' + res.message);
+      }
     } finally { setProcesando(false); }
-  }, [cargarBackups]);
+  }, [cargarBackups, customAlert]);
 
   const handleRestaurarBackup = useCallback(async (path: string, nombre: string) => {
-    if (!window.confirm(`¿Restaurar desde backup?\n\n${nombre}\n\nSe reemplazará el arsenal actual.`)) return;
+    const ok = await customConfirm(`¿Restaurar desde backup?\n\n${nombre}\n\nSe reemplazará el arsenal actual.`);
+    if (!ok) return;
+
     setProcesando(true);
     try {
       const res = await ipc('restaurar-backup', path);
       if (res.status === 'OK') {
         await sincronizarBaseDeDatos(); cargarLista(); handleLimpiar(); setMostrarBackups(false);
-        alert(`✅ Arsenal restaurado desde backup.\n${res.count} municiones.\nFecha: ${res.fecha}`);
-      } else alert('❌ ' + res.message);
+        await customAlert(`✅ Arsenal restaurado desde backup.\n${res.count} municiones.\nFecha: ${res.fecha}`);
+      } else {
+        await customAlert('❌ ' + res.message);
+      }
     } finally { setProcesando(false); }
-  }, [cargarLista, handleLimpiar]);
+  }, [cargarLista, handleLimpiar, customConfirm, customAlert]);
 
   const toggleBackups = useCallback(() => {
     setMostrarBackups(prev => { if (!prev) cargarBackups(); return !prev; });
@@ -387,7 +439,7 @@ export function Armeria() {
   // RENDER
   // ============================================================
   return (
-    <div style={{ padding: '20px', height: '100%', background: THEME.bgMain, color: THEME.textMain, fontFamily: 'Rajdhani', overflowY: 'auto' }}>
+    <div style={{ padding: '20px', height: '100%', background: THEME.bgMain, color: THEME.textMain, fontFamily: 'Rajdhani', overflowY: 'auto', position: 'relative' }}>
 
       {/* ── CABECERA ─────────────────────────────────────── */}
       <div style={{ borderBottom: `1px solid ${THEME.textAccent}`, paddingBottom: '10px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -411,14 +463,13 @@ export function Armeria() {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontFamily: 'Share Tech Mono' }}>
             {municiones.map(clave => (
               <li key={clave} onClick={() => handleSelect(clave)} style={{
-                background:   seleccionado === clave ? 'rgba(0,229,255,0.15)' : THEME.bgDark,
-                padding:      '10px', marginBottom: '5px',
-                borderLeft:   `3px solid ${seleccionado === clave ? THEME.textCyan : '#333'}`,
-                cursor:       'pointer', transition: 'all 0.15s', fontSize: '0.85rem',
+                background: seleccionado === clave ? 'rgba(0,229,255,0.15)' : THEME.bgDark,
+                padding: '10px', marginBottom: '5px',
+                borderLeft: `3px solid ${seleccionado === clave ? THEME.textCyan : '#333'}`,
+                cursor: 'pointer', transition: 'all 0.15s', fontSize: '0.85rem',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: seleccionado === clave ? '#fff' : 'inherit', fontWeight: 'bold' }}>{clave}</span>
-                  {/* Badge sin meteo */}
                   {!ARSENAL[clave]?.requiereMeteo && (
                     <span title="Sin datos meteo" style={{ color: '#ff6b6b', opacity: 0.8 }}>
                       <IconNoMeteo />
@@ -436,15 +487,14 @@ export function Armeria() {
         {/* ÁREA DE TRABAJO */}
         <div style={{ flex: '2 1 600px', background: THEME.bgPanel, border: `1px solid ${THEME.border}`, padding: '15px', display: 'flex', flexDirection: 'column', minHeight: '600px' }}>
 
-          {/* Barra superior: modos + eliminar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <div style={{ display: 'flex', gap: '5px' }}>
               {(['MANUAL', 'EXCEL', 'CODIGO'] as ModoEditor[]).map(m => (
                 <button key={m} onClick={() => setModo(m)} style={{
                   background: modo === m ? THEME.textAccent : '#111',
-                  color:      modo === m ? '#000' : '#888',
-                  border:     `1px solid ${modo === m ? THEME.textAccent : '#333'}`,
-                  padding:    '6px 15px', fontWeight: 'bold',
+                  color: modo === m ? '#000' : '#888',
+                  border: `1px solid ${modo === m ? THEME.textAccent : '#333'}`,
+                  padding: '6px 15px', fontWeight: 'bold',
                   fontFamily: 'Share Tech Mono', cursor: 'pointer',
                 }}>
                   MODO {m}
@@ -458,7 +508,6 @@ export function Armeria() {
             )}
           </div>
 
-          {/* Metadatos */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px', marginBottom: '10px', background: THEME.bgDark, padding: '10px', border: `1px solid ${THEME.border}` }}>
             <div>
               <label style={labelStyle(THEME.textCyan)}>ID MUNICIÓN</label>
@@ -472,7 +521,6 @@ export function Armeria() {
             </div>
           </div>
 
-          {/* Toggle meteo — LA NUEVA FUNCIONALIDAD */}
           <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '12px', background: THEME.bgDark, padding: '10px 14px', border: `1px solid ${meta.meteo ? '#1a4455' : '#3a1a1a'}` }}>
             <span style={{ fontSize: '0.7rem', color: '#666', fontFamily: 'Share Tech Mono', letterSpacing: 1 }}>DATOS METEO:</span>
 
@@ -481,9 +529,9 @@ export function Armeria() {
               style={{
                 padding: '5px 14px', fontFamily: 'Share Tech Mono', fontSize: '0.75rem', fontWeight: 'bold',
                 cursor: 'pointer',
-                background: meta.meteo  ? 'rgba(0,229,255,0.15)' : 'transparent',
-                color:      meta.meteo  ? THEME.textCyan : '#444',
-                border:     `1px solid ${meta.meteo ? THEME.textCyan : '#333'}`,
+                background: meta.meteo ? 'rgba(0,229,255,0.15)' : 'transparent',
+                color: meta.meteo ? THEME.textCyan : '#444',
+                border: `1px solid ${meta.meteo ? THEME.textCyan : '#333'}`,
               }}
             >
               SÍ TIENE METEO
@@ -495,14 +543,13 @@ export function Armeria() {
                 padding: '5px 14px', fontFamily: 'Share Tech Mono', fontSize: '0.75rem', fontWeight: 'bold',
                 cursor: 'pointer',
                 background: !meta.meteo ? 'rgba(255,68,68,0.1)' : 'transparent',
-                color:      !meta.meteo ? '#ff6b6b' : '#444',
-                border:     `1px solid ${!meta.meteo ? '#ff4444' : '#333'}`,
+                color: !meta.meteo ? '#ff6b6b' : '#444',
+                border: `1px solid ${!meta.meteo ? '#ff4444' : '#333'}`,
               }}
             >
               SIN METEO
             </button>
 
-            {/* Mensaje informativo cuando no tiene meteo */}
             {!meta.meteo && (
               <span style={{ fontSize: '0.65rem', color: '#664444', fontFamily: 'Share Tech Mono', letterSpacing: 0.5 }}>
                 — columnas V.TRAV / V.COLA / VI% / TEMP / PESO / PRES se guardan en 0 automáticamente
@@ -510,21 +557,18 @@ export function Armeria() {
             )}
           </div>
 
-          {/* Editores */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* ── MODO MANUAL ── */}
             {modo === 'MANUAL' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-                {/* Tabs de carga */}
                 <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', overflowX: 'auto', paddingBottom: '5px' }}>
                   {Object.keys(cargasManual).map(c => (
                     <button key={c} onClick={() => setCargaActiva(Number(c))} style={{
                       background: cargaActiva === Number(c) ? THEME.textCyan : '#222',
-                      color:      cargaActiva === Number(c) ? '#000' : '#fff',
-                      border:     'none', padding: '5px 15px', fontWeight: 'bold',
-                      cursor:     'pointer', whiteSpace: 'nowrap',
+                      color: cargaActiva === Number(c) ? '#000' : '#fff',
+                      border: 'none', padding: '5px 15px', fontWeight: 'bold',
+                      cursor: 'pointer', whiteSpace: 'nowrap',
                     }}>
                       Carga {c}
                     </button>
@@ -534,7 +578,6 @@ export function Armeria() {
                   </button>
                 </div>
 
-                {/* Tabla */}
                 <div style={{ flex: 1, overflowY: 'auto', background: '#050505', border: `1px solid ${THEME.border}`, padding: '10px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Share Tech Mono', fontSize: '0.8rem', textAlign: 'center' }}>
                     <thead style={{ position: 'sticky', top: 0, background: '#111', color: THEME.textAccent }}>
@@ -542,14 +585,12 @@ export function Armeria() {
                         {columnas.map(h => (
                           <th key={h} style={{ padding: '8px', border: '1px solid #333' }}>{h}</th>
                         ))}
-                        {/* Columna acciones */}
                         <th style={{ padding: '8px', border: '1px solid #333', width: '30px', color: '#444' }}>✕</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(cargasManual[cargaActiva] ?? []).map((fila, rIdx) => (
                         <tr key={rIdx}>
-                          {/* Mostrar solo las columnas visibles */}
                           {(meta.meteo ? fila : IDX_SIN_METEO.map(i => fila[i])).map((val, cIdx) => (
                             <td key={cIdx} style={{ border: '1px solid #222', padding: '2px' }}>
                               <input
@@ -560,7 +601,6 @@ export function Armeria() {
                               />
                             </td>
                           ))}
-                          {/* Botón eliminar fila */}
                           <td style={{ border: '1px solid #222', padding: '2px' }}>
                             <button onClick={() => deleteFila(rIdx)} style={{ background: 'transparent', color: '#662222', border: 'none', cursor: 'pointer', padding: '4px 6px' }}>
                               <IconTrash />
@@ -587,7 +627,6 @@ export function Armeria() {
               </div>
             )}
 
-            {/* ── MODO CÓDIGO ── */}
             {modo === 'CODIGO' && (
               <>
                 <textarea value={rawCode} onChange={e => setRawCode(e.target.value)}
@@ -599,7 +638,6 @@ export function Armeria() {
               </>
             )}
 
-            {/* ── MODO EXCEL ── */}
             {modo === 'EXCEL' && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed #444', background: '#080b0e', gap: '16px' }}>
                 <span style={{ color: '#2a4a55' }}><IconUpload /></span>
@@ -701,6 +739,50 @@ export function Armeria() {
           <IconWarning /> RESTAURAR DATOS DE FÁBRICA
         </button>
       </div>
+
+      {/* ========================================================= */}
+      {/* ── MODAL CUSTOM HTML/CSS ──────────────────────────────── */}
+      {/* ========================================================= */}
+      {modalActivo && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(0, 5, 8, 0.85)', backdropFilter: 'blur(3px)',
+          zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center'
+        }}>
+          <div style={{
+            background: THEME.bgPanel, border: `2px solid ${modalActivo.tipo === 'CONFIRM' ? THEME.textAccent : THEME.textCyan}`,
+            padding: '25px', minWidth: '350px', maxWidth: '500px',
+            boxShadow: `0 0 30px ${modalActivo.tipo === 'CONFIRM' ? 'rgba(255, 179, 0, 0.2)' : 'rgba(0, 229, 255, 0.2)'}`,
+            display: 'flex', flexDirection: 'column', gap: '20px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: modalActivo.tipo === 'CONFIRM' ? THEME.textAccent : THEME.textCyan, fontFamily: 'Share Tech Mono', fontSize: '1.2rem', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
+              {modalActivo.tipo === 'CONFIRM' ? <IconWarning /> : <IconSave />}
+              {modalActivo.tipo === 'CONFIRM' ? 'SISTEMA: REQUIERE CONFIRMACIÓN' : 'SISTEMA: NOTIFICACIÓN'}
+            </div>
+
+            <p style={{ color: '#fff', whiteSpace: 'pre-wrap', fontFamily: 'Rajdhani', fontSize: '1.1rem', margin: 0 }}>
+              {modalActivo.mensaje}
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>
+              {modalActivo.tipo === 'CONFIRM' && (
+                <button
+                  onClick={() => modalActivo.resolver(false)}
+                  style={{ ...btnStyle('#aaa', '#222'), padding: '8px 20px' }}
+                >
+                  [ CANCELAR ]
+                </button>
+              )}
+              <button
+                onClick={() => modalActivo.resolver(true)}
+                style={{ ...btnStyle(modalActivo.tipo === 'CONFIRM' ? THEME.textAccent : THEME.textCyan, '#001a1a'), padding: '8px 20px' }}
+              >
+                [ ACEPTAR ]
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

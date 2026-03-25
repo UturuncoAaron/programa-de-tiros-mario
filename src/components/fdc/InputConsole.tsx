@@ -41,6 +41,7 @@ const DMSInputGroup: React.FC<DMSInputGroupProps> = ({ d, m, s, color, onChange,
         background: '#000', border: `1px solid ${color}`, color,
         textAlign: 'center', fontSize: '0.8rem', padding: '2px 0',
         width: '100%', fontWeight: 'bold', opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : 'text'
     };
     return (
         <div style={{ display: 'flex', gap: '2px' }}>
@@ -123,7 +124,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                     <span>1. POSICIONES</span>
                     <button
                         onClick={() => setModoDMS_Pos(!modoDMS_Pos)} disabled={faseBloqueada}
-                        style={{ background: modoDMS_Pos ? '#0f0' : '#002200', color: modoDMS_Pos ? '#000' : '#0f0', border: '1px solid #0f0', fontSize: '0.6rem', padding: '2px 5px', cursor: faseBloqueada ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                        style={{ background: modoDMS_Pos ? '#0f0' : '#002200', color: modoDMS_Pos ? '#000' : '#0f0', border: '1px solid #0f0', fontSize: '0.6rem', padding: '2px 5px', cursor: faseBloqueada ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: faseBloqueada ? 0.5 : 1 }}
                     >
                         {modoDMS_Pos ? 'USAR UTM' : 'USAR DMS'}
                     </button>
@@ -134,7 +135,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                     <div className="group-box">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
                             <label className="group-label" style={{ margin: 0 }}>MORTERO (PROPIA TROPA)</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#002200', padding: '1px 6px', borderRadius: '4px', border: '1px solid #0f0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#002200', padding: '1px 6px', borderRadius: '4px', border: '1px solid #0f0', opacity: faseBloqueada ? 0.5 : 1 }}>
                                 <span style={{ color: '#0f0', fontSize: '0.6rem', fontWeight: 'bold' }}>ZONA:</span>
                                 <select id="zona" value={data.zona} onChange={onChange as React.ChangeEventHandler<HTMLSelectElement>} disabled={faseBloqueada}
                                     style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: '0.7rem', fontWeight: 'bold', cursor: faseBloqueada ? 'not-allowed' : 'pointer', outline: 'none', padding: 0 }}>
@@ -146,7 +147,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                         </div>
 
                         {modoDMS_Pos ? (
-                            <div style={estiloDMSContainer}>
+                            <div style={{ ...estiloDMSContainer, opacity: faseBloqueada ? 0.5 : 1 }}>
                                 <div>
                                     <label style={{ color: '#ffcc00', fontSize: '0.6rem' }}>LAT (SUR)</label>
                                     <DMSInputGroup d={dms.morLatD} m={dms.morLatM} s={dms.morLatS} color="#ffcc00" disabled={faseBloqueada}
@@ -162,7 +163,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px', borderTop: '1px solid #333', paddingTop: '2px' }}>
                                     <label style={{ fontSize: '0.6rem', color: '#888' }}>ALTITUD (m):</label>
                                     <input type="number" id="alt_pieza" value={data.alt_pieza || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada}
-                                        style={{ background: '#000', border: '1px solid #444', color: '#fff', flex: 1, padding: '2px', fontSize: '0.8rem' }} />
+                                        style={{ background: '#000', border: '1px solid #444', color: '#fff', flex: 1, padding: '2px', fontSize: '0.8rem', cursor: faseBloqueada ? 'not-allowed' : 'text' }} />
                                 </div>
                             </div>
                         ) : (
@@ -178,7 +179,7 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                     <div className="group-box">
                         <label className="group-label text-red">OBJETIVO (BLANCO)</label>
                         {modoDMS_Pos ? (
-                            <div style={{ ...estiloDMSContainer, borderColor: '#662222', background: 'rgba(255,0,0,0.05)' }}>
+                            <div style={{ ...estiloDMSContainer, borderColor: '#662222', background: 'rgba(255,0,0,0.05)', opacity: faseBloqueada ? 0.5 : 1 }}>
                                 <div>
                                     <label style={{ color: '#ff8888', fontSize: '0.6rem' }}>LAT (SUR)</label>
                                     <DMSInputGroup d={dms.objLatD} m={dms.objLatM} s={dms.objLatS} color="#ff8888" disabled={faseBloqueada}
@@ -193,15 +194,15 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                                 </div>
                                 <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px', borderTop: '1px solid #333', paddingTop: '2px' }}>
                                     <label style={{ fontSize: '0.6rem', color: '#888' }}>ALTITUD (m):</label>
-                                    <input type="number" id="alt_obj" value={data.alt_obj || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>}
-                                        style={{ background: '#000', border: '1px solid #444', color: '#fff', flex: 1, padding: '2px', fontSize: '0.8rem' }} />
+                                    <input type="number" id="alt_obj" value={data.alt_obj || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada}
+                                        style={{ background: '#000', border: '1px solid #444', color: '#fff', flex: 1, padding: '2px', fontSize: '0.8rem', cursor: faseBloqueada ? 'not-allowed' : 'text' }} />
                                 </div>
                             </div>
                         ) : (
                             <div className="input-row-3">
-                                <div className="tiny-field"><label>ESTE (X)</label><input type="number" id="tx" value={data.tx || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} /></div>
-                                <div className="tiny-field"><label>NORTE (Y)</label><input type="number" id="ty" value={data.ty || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} /></div>
-                                <div className="tiny-field" style={{ flex: 0.6 }}><label>ALT (Z)</label><input type="number" id="alt_obj" className="mini-input" value={data.alt_obj || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} /></div>
+                                <div className="tiny-field"><label>ESTE (X)</label><input type="number" id="tx" value={data.tx || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={faseBloqueada ? estiloBloqueado : {}} /></div>
+                                <div className="tiny-field"><label>NORTE (Y)</label><input type="number" id="ty" value={data.ty || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={faseBloqueada ? estiloBloqueado : {}} /></div>
+                                <div className="tiny-field" style={{ flex: 0.6 }}><label>ALT (Z)</label><input type="number" id="alt_obj" className="mini-input" value={data.alt_obj || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={faseBloqueada ? estiloBloqueado : {}} /></div>
                             </div>
                         )}
                     </div>
@@ -212,8 +213,8 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
             <div className="input-card">
                 <div className="card-header text-cyan" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>2. OBSERVADOR AVANZADO</span>
-                    <button onClick={() => setModoDMS_Obs(!modoDMS_Obs)}
-                        style={{ background: modoDMS_Obs ? '#0ff' : '#002222', color: modoDMS_Obs ? '#000' : '#0ff', border: '1px solid #0ff', fontSize: '0.6rem', padding: '2px 5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <button onClick={() => setModoDMS_Obs(!modoDMS_Obs)} disabled={faseBloqueada}
+                        style={{ background: modoDMS_Obs ? '#0ff' : '#002222', color: modoDMS_Obs ? '#000' : '#0ff', border: '1px solid #0ff', fontSize: '0.6rem', padding: '2px 5px', cursor: faseBloqueada ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: faseBloqueada ? 0.5 : 1 }}>
                         {modoDMS_Obs ? 'USAR UTM' : 'USAR DMS'}
                     </button>
                 </div>
@@ -221,24 +222,24 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                     <div className="group-box">
                         <label className="group-label">UBICACIÓN O.A.</label>
                         {modoDMS_Obs ? (
-                            <div style={{ ...estiloDMSContainer, borderColor: '#00aaaa', background: 'rgba(0,255,255,0.05)' }}>
+                            <div style={{ ...estiloDMSContainer, borderColor: '#00aaaa', background: 'rgba(0,255,255,0.05)', opacity: faseBloqueada ? 0.5 : 1 }}>
                                 <div>
                                     <label style={{ color: '#00ffff', fontSize: '0.6rem' }}>LAT (SUR)</label>
-                                    <DMSInputGroup d={dms.obsLatD} m={dms.obsLatM} s={dms.obsLatS} color="#00ffff"
+                                    <DMSInputGroup d={dms.obsLatD} m={dms.obsLatM} s={dms.obsLatS} color="#00ffff" disabled={faseBloqueada}
                                         onChange={(f, v) => updateDms(f === 'd' ? 'obsLatD' : f === 'm' ? 'obsLatM' : 'obsLatS', v)}
                                         onBlur={() => handleDmsCalc('obs')} />
                                 </div>
                                 <div>
                                     <label style={{ color: '#00ffff', fontSize: '0.6rem' }}>LON (OESTE)</label>
-                                    <DMSInputGroup d={dms.obsLonD} m={dms.obsLonM} s={dms.obsLonS} color="#00ffff"
+                                    <DMSInputGroup d={dms.obsLonD} m={dms.obsLonM} s={dms.obsLonS} color="#00ffff" disabled={faseBloqueada}
                                         onChange={(f, v) => updateDms(f === 'd' ? 'obsLonD' : f === 'm' ? 'obsLonM' : 'obsLonS', v)}
                                         onBlur={() => handleDmsCalc('obs')} />
                                 </div>
                             </div>
                         ) : (
                             <div className="input-row-2">
-                                <div className="tiny-field"><label>ESTE</label><input type="number" id="ox" value={data.ox || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} /></div>
-                                <div className="tiny-field"><label>NORTE</label><input type="number" id="oy" value={data.oy || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} /></div>
+                                <div className="tiny-field"><label>ESTE</label><input type="number" id="ox" value={data.ox || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={faseBloqueada ? estiloBloqueado : {}} /></div>
+                                <div className="tiny-field"><label>NORTE</label><input type="number" id="oy" value={data.oy || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={faseBloqueada ? estiloBloqueado : {}} /></div>
                             </div>
                         )}
                     </div>
@@ -249,14 +250,14 @@ export function InputConsole({ data, variacion, onChange, faseBloqueada, bloquea
                             <div className="tiny-field" style={{ flex: 1.5 }}>
                                 <label>AZIMUT</label>
                                 <div style={{ display: 'flex' }}>
-                                    <input type="number" id="azObs" value={data.azObs || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} style={{ borderRight: 'none', width: '70%' }} />
-                                    <select id="azObsUnit" value={data.azObsUnit} onChange={onChange as React.ChangeEventHandler<HTMLSelectElement>} style={{ width: '30%', fontSize: '0.6rem', padding: '0', background: '#003333', borderLeft: '1px solid #333' }}>
+                                    <input type="number" id="azObs" value={data.azObs || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={{ borderRight: 'none', width: '70%', ...(faseBloqueada ? estiloBloqueado : {}) }} />
+                                    <select id="azObsUnit" value={data.azObsUnit} onChange={onChange as React.ChangeEventHandler<HTMLSelectElement>} disabled={faseBloqueada} style={{ width: '30%', fontSize: '0.6rem', padding: '0', background: '#003333', borderLeft: '1px solid #333', cursor: faseBloqueada ? 'not-allowed' : 'pointer', opacity: faseBloqueada ? 0.5 : 1 }}>
                                         <option value="mils">MIL</option>
                                         <option value="deg">GRD</option>
                                     </select>
                                 </div>
                             </div>
-                            <div className="tiny-field" style={{ flex: 1 }}><label>DISTANCIA</label><input type="number" id="distObs" value={data.distObs || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} /></div>
+                            <div className="tiny-field" style={{ flex: 1 }}><label>DISTANCIA</label><input type="number" id="distObs" value={data.distObs || ''} onChange={onChange as React.ChangeEventHandler<HTMLInputElement>} disabled={faseBloqueada} style={faseBloqueada ? estiloBloqueado : {}} /></div>
                         </div>
                     </div>
                 </div>

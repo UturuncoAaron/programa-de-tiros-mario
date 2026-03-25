@@ -1,9 +1,8 @@
-import React from 'react';
-import type { ResState, InputsState } from '../../types/fdc';
-import type { FdcChangeEvent } from '../../types/fdc';
+import React, { memo } from 'react';
+import type { ResState, InputsState, FdcChangeEvent } from '../../types/fdc';
 
 // ============================================================
-// TIPOS LOCALES (solo lo exclusivo de este componente)
+// TIPOS
 // ============================================================
 interface SolutionDisplayProps {
   res: ResState;
@@ -15,9 +14,65 @@ interface SolutionDisplayProps {
 }
 
 // ============================================================
-// COMPONENTE
+// HELPERS
 // ============================================================
-export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, faseMision }: SolutionDisplayProps) {
+
+/** Calcula el % de uso del tubo basado en distancia vs rango de la carga */
+function calcularPotenciaTubo(
+  rango_min: number,
+  rango_max: number,
+  mx: number, my: number,
+  tx: number, ty: number,
+): number {
+  if (rango_min === 0) return 0;
+  const span = rango_max - rango_min;
+  if (span <= 0) return 0;
+  const dist = Math.sqrt(Math.pow(tx - mx, 2) + Math.pow(ty - my, 2));
+  const pct = ((dist - rango_min) / span) * 100;
+  return Math.min(100, Math.max(0, pct));
+}
+
+function colorBarra(pct: number): string {
+  if (pct > 95) return '#ff4444';
+  if (pct > 85) return '#ffb300';
+  return '#4dff88';
+}
+
+// ============================================================
+// SUB-COMPONENTES
+// ============================================================
+
+interface CmdCellProps {
+  label: string;
+  value: string;
+  highlight?: 'green' | 'yellow' | 'none';
+  muted?: boolean;
+}
+
+const CmdCell = memo(({ label, value, highlight = 'none', muted = false }: CmdCellProps) => {
+  const valColor = highlight === 'green'
+    ? '#4dff88'
+    : highlight === 'yellow'
+      ? '#ffb300'
+      : muted ? '#888' : '#fff';
+
+  return (
+    <div className={`cmd-cell${highlight === 'green' ? ' hl-green' : highlight === 'yellow' ? ' hl-yellow' : ''}`}>
+      <span className="lbl">{label}</span>
+      <span className="val" style={highlight === 'green' ? { fontSize: '1.4rem', color: valColor } : { color: valColor }}>
+        {value}
+      </span>
+    </div>
+  );
+});
+CmdCell.displayName = 'CmdCell';
+
+// ============================================================
+// COMPONENTE PRINCIPAL
+// ============================================================
+export const SolutionDisplay = memo(function SolutionDisplay({
+  res, inputs, onChange, onFire, missionActive, faseMision,
+}: SolutionDisplayProps) {
 
   const estiloBloqueado: React.CSSProperties = {
     opacity: 0.5,
@@ -28,9 +83,16 @@ export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, 
     boxShadow: 'none',
   };
 
+  const pct = calcularPotenciaTubo(
+    res.rango_min, res.rango_max,
+    inputs.mx, inputs.my,
+    inputs.tx, inputs.ty,
+  );
+  const colorBar = colorBarra(pct);
+
   return (
     <>
-      {/* ORIENTACIÓN BASE */}
+      {/* ── ORIENTACIÓN BASE ──────────────────────────────── */}
       <div className="sidebar-section orient-box" style={{ marginTop: '0' }}>
         <label className="section-label text-amber">ORIENTACIÓN BASE (INPUT)</label>
         <input
@@ -44,7 +106,7 @@ export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, 
         />
       </div>
 
-      {/* SELECTOR DE CARGA */}
+      {/* ── SELECTOR DE CARGA ────────────────────────────── */}
       <div className="sidebar-section">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '5px' }}>
           <label className="section-label">SELECTOR DE CARGA</label>
@@ -73,29 +135,17 @@ export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, 
           </div>
 
           <div className="power-meter">
-            {res.rango_min > 0 ? (() => {
-              const span = res.rango_max - res.rango_min;
-              const dist = (inputs.tx && inputs.mx)
-                ? Math.sqrt(Math.pow(inputs.tx - inputs.mx, 2) + Math.pow(inputs.ty - inputs.my, 2))
-                : 0;
-
-              let pct = span > 0 ? ((dist - res.rango_min) / span) * 100 : 0;
-              pct = Math.min(100, Math.max(0, pct));
-
-              const colorBar = pct > 95 ? '#ff4444' : pct > 85 ? '#ffb300' : '#4dff88';
-
-              return (
-                <>
-                  <div className="meter-label">POTENCIA TUBO</div>
-                  <div className="meter-track">
-                    <div className="meter-fill" style={{ width: `${pct}%`, background: colorBar }} />
-                  </div>
-                  <div style={{ fontSize: '0.6rem', textAlign: 'right', marginTop: '2px', color: colorBar }}>
-                    {Math.round(pct)}% MAX
-                  </div>
-                </>
-              );
-            })() : (
+            {res.rango_min > 0 ? (
+              <>
+                <div className="meter-label">POTENCIA TUBO</div>
+                <div className="meter-track">
+                  <div className="meter-fill" style={{ width: `${pct}%`, background: colorBar }} />
+                </div>
+                <div style={{ fontSize: '0.6rem', textAlign: 'right', marginTop: '2px', color: colorBar }}>
+                  {Math.round(pct)}% MAX
+                </div>
+              </>
+            ) : (
               <div style={{ color: '#555', fontSize: '0.7rem', textAlign: 'center', marginTop: '10px' }}>
                 SIN SOLUCIÓN
               </div>
@@ -104,39 +154,39 @@ export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, 
         </div>
       </div>
 
-      {/* SOLUCIÓN DE TIRO */}
+      {/* ── SOLUCIÓN DE TIRO ──────────────────────────────── */}
       <div className="sidebar-section">
         <label className="section-label">SOLUCIÓN DE TIRO</label>
 
         <div className="cmd-grid-sidebar">
-          <div className="cmd-cell hl-green">
-            <span className="lbl">AZ. MAGNÉTICO</span>
-            <span className="val text-green" style={{ fontSize: '1.4rem' }}>
-              {Math.round(res.azimutMag).toString().padStart(4, '0')}
-            </span>
-          </div>
-          <div className="cmd-cell">
-            <span className="lbl">AZ. GRID (MAPA)</span>
-            <span className="val" style={{ color: '#888' }}>
-              {Math.round(res.azimutMils).toString().padStart(4, '0')}
-            </span>
-          </div>
-          <div className="cmd-cell hl-yellow">
-            <span className="lbl">DERIVA (PLATO)</span>
-            <span className="val text-yellow">{res.cmd_deriva}</span>
-          </div>
-          <div className="cmd-cell hl-yellow">
-            <span className="lbl">ELEVACIÓN</span>
-            <span className="val text-yellow">{res.cmd_elev}</span>
-          </div>
-          <div className="cmd-cell">
-            <span className="lbl">TIEMPO VUELO</span>
-            <span className="val">{res.cmd_time} s</span>
-          </div>
-          <div className="cmd-cell">
-            <span className="lbl">ALCANCE</span>
-            <span className="val">{res.cmd_dist} m</span>
-          </div>
+          <CmdCell
+            label="AZ. MAGNÉTICO"
+            value={Math.round(res.azimutMag).toString().padStart(4, '0')}
+            highlight="green"
+          />
+          <CmdCell
+            label="AZ. GRID (MAPA)"
+            value={Math.round(res.azimutMils).toString().padStart(4, '0')}
+            muted
+          />
+          <CmdCell
+            label="DERIVA (PLATO)"
+            value={res.cmd_deriva}
+            highlight="yellow"
+          />
+          <CmdCell
+            label="ELEVACIÓN"
+            value={res.cmd_elev}
+            highlight="yellow"
+          />
+          <CmdCell
+            label="TIEMPO VUELO"
+            value={`${res.cmd_time} s`}
+          />
+          <CmdCell
+            label="ALCANCE"
+            value={`${res.cmd_dist} m`}
+          />
         </div>
 
         {faseMision !== 'FUEGO' && (
@@ -144,7 +194,7 @@ export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, 
             onClick={onFire}
             className="btn-fire-tactical"
             disabled={missionActive}
-            style={missionActive ? estiloBloqueado : {}}
+            style={missionActive ? estiloBloqueado : undefined}
           >
             {missionActive ? '[ DISPARANDO... ]' : '[ EJECUTAR TIRO ]'}
           </button>
@@ -152,4 +202,4 @@ export function SolutionDisplay({ res, inputs, onChange, onFire, missionActive, 
       </div>
     </>
   );
-}
+});

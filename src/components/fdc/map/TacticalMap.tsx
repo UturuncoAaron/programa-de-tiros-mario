@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { utmToLatLng } from '../../../logic/calculos';
 import type { LogTiro } from '../../../types/fdc';
 
 import { MapControls } from './MapControls';
@@ -41,14 +42,22 @@ const TILE_PROVIDERS = {
 
 /** Zoom a partir del cual Esri falla en Sudamérica → activar Google */
 const ZOOM_FALLBACK = 17;
+const ES_SUR = true;
+const FLY_DURATION = 0.6;
+const FIT_PADDING: L.PointTuple = [80, 80];
+const FIT_MAX_ZOOM = 15;
+const FLY_SINGLE_ZOOM = 14;
 
 // ============================================================
 // TIPOS
 // ============================================================
 export interface TacticalMapProps {
-  mx: number; my: number;
-  tx: number; ty: number;
-  ox: number; oy: number;
+  mx: number;
+  my: number;
+  tx: number;
+  ty: number;
+  ox: number;
+  oy: number;
   zona: number;
   historial: LogTiro[];
   orientacion_base: number;
@@ -75,8 +84,16 @@ interface StatusBarProps {
 }
 
 // ============================================================
+// HELPERS — fuera del componente para no recrearse en cada render
+// ============================================================
+
+/** Devuelve true si ambas coordenadas UTM son válidas (no-cero, no-NaN). */
+function hasValidCoords(x: number, y: number): boolean {
+  return x !== 0 && y !== 0 && !isNaN(x) && !isNaN(y);
+}
+
+// ============================================================
 // SUB-COMPONENTE: StatusBar
-// Extraído para mantener TacticalMap limpio y testeable.
 // ============================================================
 function StatusBar({ mode, isOnline, activeProvider }: StatusBarProps) {
   return (
@@ -124,8 +141,7 @@ export function TacticalMap(props: TacticalMapProps) {
   const [activeProvider, setActiveProvider] = useState<ProviderKey>('esri');
 
   /**
-   * ✅ ESLint fix: `mapInstance` en state reemplaza `mapRef.current` en JSX.
-   * Leer refs durante el render está prohibido — state sí está permitido.
+   * mapInstance en state (no en ref) para poder usarlo legalmente en JSX.
    * Se setea una sola vez tras la inicialización de Leaflet.
    */
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
@@ -149,8 +165,7 @@ export function TacticalMap(props: TacticalMapProps) {
   }, [mode, isOnline, showLabels]);
 
   // ============================================================
-  // LÓGICA DE CAPAS — solo usa refs, sin deps de estado
-  // Esto garantiza que useCallback nunca se recrea innecesariamente
+  // LÓGICA DE CAPAS — solo usa refs para no recrearse
   // ============================================================
 
   const syncSatLayers = useCallback((zoom: number, satMode: boolean, online: boolean) => {
@@ -208,8 +223,8 @@ export function TacticalMap(props: TacticalMapProps) {
     layerGoogleRef.current = L.tileLayer(TILE_PROVIDERS.google.url, { maxZoom: TILE_PROVIDERS.google.maxZoom, opacity: TILE_PROVIDERS.google.opacity });
     layerLabelsRef.current = L.tileLayer(TILE_PROVIDERS.labels.url, { maxZoom: TILE_PROVIDERS.labels.maxZoom, opacity: TILE_PROVIDERS.labels.opacity });
 
-    // Usa stateRef para leer estado actual en el momento del evento,
-    // no el estado capturado en el closure del montaje.
+    // stateRef garantiza que leemos el estado actual en el momento del evento,
+    // no el closure capturado al montar.
     map.on('zoomend', () => {
       syncAllLayers(map.getZoom(), stateRef.current);
     });
@@ -218,7 +233,6 @@ export function TacticalMap(props: TacticalMapProps) {
 
     const timer = setTimeout(() => {
       map.invalidateSize();
-      // ✅ Guardamos en STATE para poder usarlo en JSX legalmente
       setMapInstance(map);
     }, 200);
 
@@ -239,10 +253,7 @@ export function TacticalMap(props: TacticalMapProps) {
   // ============================================================
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => {
-      setIsOnline(false);
-      setMode('radar');
-    };
+    const handleOffline = () => { setIsOnline(false); setMode('radar'); };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -260,6 +271,53 @@ export function TacticalMap(props: TacticalMapProps) {
     if (!mapRef.current) return;
     syncAllLayers(mapRef.current.getZoom(), { mode, isOnline, showLabels });
   }, [mode, isOnline, showLabels, syncAllLayers]);
+
+  // ============================================================
+  // AUTO-CENTRADO — reacciona a cambios de coordenadas
+  // Se centra entre mortero+objetivo si ambos existen,
+  // o vuela al punto disponible si solo hay uno.
+  // ============================================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const tieneMortero = hasValidCoords(mx, my);
+    const tieneObjetivo = hasValidCoords(tx, ty);
+
+    if (!tieneMortero && !tieneObjetivo) return;
+
+    try {
+      if (tieneMortero && tieneObjetivo) {
+        const mPos = utmToLatLng(mx, my, zona, ES_SUR);
+        const tPos = utmToLatLng(tx, ty, zona, ES_SUR);
+        if (isNaN(mPos[0]) || isNaN(tPos[0])) return;
+
+        const bounds = L.latLngBounds([mPos, tPos]);
+
+        // Extender bounds con el observador si existe
+        if (hasValidCoords(ox, oy)) {
+          const oPos = utmToLatLng(ox, oy, zona, ES_SUR);
+          if (!isNaN(oPos[0])) bounds.extend(oPos);
+        }
+
+        map.fitBounds(bounds, {
+          padding: FIT_PADDING,
+          maxZoom: FIT_MAX_ZOOM,
+          animate: true,
+        });
+
+      } else {
+        // Solo un punto disponible → volar suavemente
+        const [x, y] = tieneMortero ? [mx, my] : [tx, ty];
+        const pos = utmToLatLng(x, y, zona, ES_SUR);
+        if (!isNaN(pos[0])) {
+          map.flyTo(pos, FLY_SINGLE_ZOOM, { animate: true, duration: FLY_DURATION });
+        }
+      }
+    } catch (e) {
+      console.error('[TacticalMap] Error en auto-centrado:', e);
+    }
+  }, [mx, my, tx, ty, ox, oy, zona]);
 
   // ============================================================
   // RENDER
@@ -281,21 +339,18 @@ export function TacticalMap(props: TacticalMapProps) {
         showLabels={showLabels} setShowLabels={setShowLabels}
       />
 
-      {/* Contenedor DOM para Leaflet */}
+      {/* Contenedor DOM para Leaflet — nunca re-renderiza */}
       <div ref={mapContainerRef} style={{ flex: 1, width: '100%', height: '100%' }} />
 
       {/*
-        ✅ mapInstance (state) en lugar de mapRef.current (ref).
+        mapInstance (state) en lugar de mapRef.current (ref).
         Los refs no deben leerse durante el render.
         mapInstance es null hasta que Leaflet termina de inicializar.
       */}
       {mapInstance !== null && (
         <>
           {mode === 'radar' && (
-            <GridLayer
-              map={mapInstance}
-              mx={mx} my={my}
-            />
+            <GridLayer map={mapInstance} mx={mx} my={my} zona={zona} />
           )}
 
           <MainElements

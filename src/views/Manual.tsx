@@ -364,17 +364,17 @@ corrDeriva  = −(vTrav × tabla[3])          ← se suma a deriva geométrica`}
                 <Subtitulo>EJEMPLO JSON (MODO CÓDIGO)</Subtitulo>
                 <p style={estiloP}>Estructura mínima para pegar en Modo Código. Podés copiarla y modificarla:</p>
                 <CopyBlock lang="json" code={`"0": [
-  [100, 1511, 15.6, 6.0, 0.6,  2, 0.0, 0, 0.0],
-  [200, 1422, 15.4, 3.1, 0.6,  4, 0.0, 1, 0.0],
-  [300, 1324, 15.0, 2.1, 0.7,  6, 0.1, 1, 0.0],
-  [400, 1215, 14.5, 1.6, 0.8,  7, 0.1, 2, 0.0],
-  [500, 1072, 13.6, 1.3, 0.9,  9, 0.1, 3, 0.0],
-  [582,  800, 11.1, 0.9, 0.9, 11, 0.1, 3, 0.1]
-],
-"1": [
-  [100, 1600, 16.1, 5.8, 0.5,  2, 0.0, 0, 0.0],
-  [200, 1510, 15.9, 3.0, 0.5,  4, 0.1, 1, 0.0]
-]`} />
+                  [100, 1511, 15.6, 6.0, 0.6,  2, 0.0, 0, 0.0],
+                  [200, 1422, 15.4, 3.1, 0.6,  4, 0.0, 1, 0.0],
+                  [300, 1324, 15.0, 2.1, 0.7,  6, 0.1, 1, 0.0],
+                  [400, 1215, 14.5, 1.6, 0.8,  7, 0.1, 2, 0.0],
+                  [500, 1072, 13.6, 1.3, 0.9,  9, 0.1, 3, 0.0],
+                  [582,  800, 11.1, 0.9, 0.9, 11, 0.1, 3, 0.1]
+                ],
+                "1": [
+                  [100, 1600, 16.1, 5.8, 0.5,  2, 0.0, 0, 0.0],
+                  [200, 1510, 15.9, 3.0, 0.5,  4, 0.1, 1, 0.0]
+                ]`} />
                 <p style={{ fontSize: '0.75rem', color: C.text, lineHeight: 1.8 }}>
                   Orden de columnas: <code style={{ color: C.amber }}>[DIST, ELEV, TIME, V_TRAV, V_COLA, VI%, TEMP, PESO, PRES]</code><br />
                   Para munición sin meteo, los últimos 6 valores pueden ser 0.
