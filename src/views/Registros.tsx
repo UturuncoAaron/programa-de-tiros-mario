@@ -1,22 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import XLSX from 'xlsx-js-style';
+import * as XLSX from 'xlsx';
 import type { LogTiro } from '../types/fdc';
 
 // ============================================================
 // TIPOS
 // ============================================================
-interface ExcelCellStyle {
-    font?: { name?: string; sz?: number; bold?: boolean; color?: { rgb: string } };
-    border?: { top?: BorderSide; bottom?: BorderSide; left?: BorderSide; right?: BorderSide };
-    alignment?: { vertical: string; horizontal: string };
-    fill?: { fgColor: { rgb: string } };
-}
-
-interface BorderSide {
-    style: string;
-    color: { rgb: string };
-}
-
 interface ConfirmPurgeModalProps {
     count: number;
     onConfirm: () => void;
@@ -27,12 +15,6 @@ interface ConfirmPurgeModalProps {
 // CONSTANTES
 // ============================================================
 const STORAGE_KEY = 'mision_logs';
-
-const THIN_BORDER: BorderSide = { style: 'thin', color: { rgb: '555555' } };
-const ALL_BORDERS: ExcelCellStyle['border'] = {
-    top: THIN_BORDER, bottom: THIN_BORDER,
-    left: THIN_BORDER, right: THIN_BORDER,
-};
 
 const COL_WIDTHS = [
     { wch: 5 }, { wch: 8 }, { wch: 8 }, { wch: 30 },
@@ -208,7 +190,7 @@ function buildExcelRow(log: LogTiro): Record<string, unknown> {
 }
 
 // ============================================================
-// ESTILOS TABLA
+// ESTILOS TABLA (Solo afectan a la UI, no al Excel)
 // ============================================================
 const thStyle: React.CSSProperties = {
     padding: '12px 8px',
@@ -254,42 +236,9 @@ export function Registros() {
 
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(historial.map(buildExcelRow));
+
+        // Mantenemos el ancho de las columnas
         ws['!cols'] = COL_WIDTHS;
-
-        const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1:A1');
-
-        for (let R = range.s.r; R <= range.e.r; R++) {
-            for (let C = range.s.c; C <= range.e.c; C++) {
-                const addr = XLSX.utils.encode_cell({ r: R, c: C });
-                if (!ws[addr]) continue;
-
-                const style: ExcelCellStyle = {
-                    font: { name: 'Courier New', sz: 10 },
-                    border: ALL_BORDERS,
-                    alignment: { vertical: 'center', horizontal: 'center' },
-                };
-
-                if (R === 0) {
-                    style.fill = { fgColor: { rgb: '222222' } };
-                    style.font = { name: 'Courier New', sz: 10, bold: true, color: { rgb: 'FFB300' } };
-                } else {
-                    style.fill = { fgColor: { rgb: R % 2 === 0 ? 'EEEEEE' : 'FFFFFF' } };
-
-                    // Columna TIPO (índice 2)
-                    if (C === 2) {
-                        const val = ws[addr].v;
-                        style.font = { bold: true, color: { rgb: val === 'SALVA' ? 'AA0000' : '006699' } };
-                    }
-                    // Columna DERIVA (índice 4) — resaltar
-                    if (C === 4) {
-                        style.fill = { fgColor: { rgb: 'FFF2CC' } };
-                        style.font = { bold: true };
-                    }
-                }
-
-                ws[addr].s = style;
-            }
-        }
 
         XLSX.utils.book_append_sheet(wb, ws, 'FDC_LOGS');
         XLSX.writeFile(wb, `FDC_REPORTE_${new Date().toISOString().slice(0, 10)}.xlsx`);

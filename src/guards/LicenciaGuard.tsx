@@ -8,15 +8,10 @@
 //    2. Si válida: renderiza children + badge de estado
 //    3. Si inválida: muestra pantalla de activación
 //    4. Re-verifica cada INTERVALO_REVALIDACION ms (en background)
-//
-//  Uso en App.tsx:
-//    <LicenciaGuard>
-//      <Router>...</Router>
-//    </LicenciaGuard>
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ReactNode, CSSProperties } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { ReactNode, CSSProperties, FormEvent } from 'react';
 import {
   verificarLicencia,
   activarLicencia,
@@ -44,12 +39,11 @@ type EstadoPantalla = 'cargando' | 'activa' | 'inactiva';
 // ── Componente principal ──────────────────────────────────────
 
 export default function LicenciaGuard({ children }: LicenciaGuardProps) {
-  const [pantalla, setPantalla]     = useState<EstadoPantalla>('cargando');
-  const [licInfo, setLicInfo]       = useState<ResultadoLicencia | null>(null);
-  const [codigo, setCodigo]         = useState('');
-  const [errorMsg, setErrorMsg]     = useState('');
-  const [activando, setActivando]   = useState(false);
-  const intervalRef                 = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pantalla, setPantalla] = useState<EstadoPantalla>('cargando');
+  const [licInfo, setLicInfo] = useState<ResultadoLicencia | null>(null);
+  const [codigo, setCodigo] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [activando, setActivando] = useState(false);
 
   // ── Verificación de licencia ────────────────────────────────
 
@@ -61,29 +55,47 @@ export default function LicenciaGuard({ children }: LicenciaGuardProps) {
 
   // Verificación inicial + re-validación periódica en background
   useEffect(() => {
-    verificar();
+    let isMounted = true; // Control de fugas de memoria (Memory Leaks)
 
-    intervalRef.current = setInterval(() => {
+    const initVerification = async () => {
+      const resultado = await verificarLicencia();
+      if (isMounted) {
+        setLicInfo(resultado);
+        setPantalla(resultado.valida ? 'activa' : 'inactiva');
+      }
+    };
+
+    // Lanzamos la verificación inicial sin romper las reglas de ESLint
+    initVerification();
+
+    const intervalId = setInterval(() => {
       // Re-verifica silenciosamente; si falla, no interrumpe el trabajo
       verificarLicencia().then((res) => {
-        setLicInfo(res);
-        if (!res.valida) setPantalla('inactiva');
+        if (isMounted) {
+          setLicInfo(res);
+          if (!res.valida) setPantalla('inactiva');
+        }
       });
     }, INTERVALO_REVALIDACION);
 
+    // Cleanup del componente al desmontar
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      isMounted = false;
+      clearInterval(intervalId);
     };
-  }, [verificar]);
+  }, []);
 
   // ── Activación ──────────────────────────────────────────────
 
-  const handleActivar = useCallback(async () => {
+  const handleActivar = useCallback(async (e?: FormEvent) => {
+    if (e) e.preventDefault(); // Evita que la página se recargue al dar Enter
+
     const codigoLimpio = codigo.trim().toUpperCase();
     if (!codigoLimpio) {
       setErrorMsg('Ingresa un código de activación.');
       return;
     }
+
     setActivando(true);
     setErrorMsg('');
     const res = await activarLicencia(codigoLimpio);
@@ -96,13 +108,6 @@ export default function LicenciaGuard({ children }: LicenciaGuardProps) {
       setErrorMsg(res.mensaje);
     }
   }, [codigo, verificar]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter' && !activando) handleActivar();
-    },
-    [handleActivar, activando]
-  );
 
   // ── Renders ──────────────────────────────────────────────────
 
@@ -125,8 +130,7 @@ export default function LicenciaGuard({ children }: LicenciaGuardProps) {
       errorMsg={errorMsg}
       activando={activando}
       onCodigoChange={(val) => { setCodigo(val); setErrorMsg(''); }}
-      onActivar={handleActivar}
-      onKeyDown={handleKeyDown}
+      onSubmit={handleActivar}
     />
   );
 }
@@ -152,18 +156,17 @@ function PantallaCargando() {
 }
 
 interface PantallaActivacionProps {
-  licInfo           : ResultadoLicencia | null;
-  codigo            : string;
-  errorMsg          : string;
-  activando         : boolean;
-  onCodigoChange    : (val: string) => void;
-  onActivar         : () => void;
-  onKeyDown         : (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  licInfo: ResultadoLicencia | null;
+  codigo: string;
+  errorMsg: string;
+  activando: boolean;
+  onCodigoChange: (val: string) => void;
+  onSubmit: (e: FormEvent) => void;
 }
 
 function PantallaActivacion({
   licInfo, codigo, errorMsg, activando,
-  onCodigoChange, onActivar, onKeyDown,
+  onCodigoChange, onSubmit,
 }: PantallaActivacionProps) {
   return (
     <div style={s.overlay}>
@@ -177,38 +180,37 @@ function PantallaActivacion({
           Ingresa el código de activación proporcionado por el administrador del sistema.
         </p>
 
-        {/* Mensaje de estado del servidor */}
         {licInfo && !licInfo.valida && (
           <AlertaBanner mensaje={licInfo.mensaje} />
         )}
 
-        {/* Input de código */}
-        <div style={{ marginBottom: 8 }}>
-          <label style={s.label}>CÓDIGO DE ACTIVACIÓN</label>
-          <input
-            style={s.input}
-            type="text"
-            placeholder="MARIA-2025-XXXX"
-            value={codigo}
-            onChange={(e) => onCodigoChange(e.target.value.toUpperCase())}
-            onKeyDown={onKeyDown}
-            maxLength={25}
-            spellCheck={false}
-            autoComplete="off"
-            autoFocus
-          />
-        </div>
+        {/* Uso de un formulario para manejar el evento Enter nativamente */}
+        <form onSubmit={onSubmit}>
+          <div style={{ marginBottom: 8 }}>
+            <label style={s.label}>CÓDIGO DE ACTIVACIÓN</label>
+            <input
+              style={s.input}
+              type="text"
+              placeholder="MARIA-2025-XXXX"
+              value={codigo}
+              onChange={(e) => onCodigoChange(e.target.value.toUpperCase())}
+              maxLength={25}
+              spellCheck={false}
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
 
-        {/* Error de validación local */}
-        {errorMsg && <p style={s.errorMsg}>{errorMsg}</p>}
+          {errorMsg && <p style={s.errorMsg}>{errorMsg}</p>}
 
-        <button
-          style={{ ...s.btn, opacity: activando ? 0.6 : 1, cursor: activando ? 'not-allowed' : 'pointer' }}
-          onClick={onActivar}
-          disabled={activando}
-        >
-          {activando ? '[ VERIFICANDO... ]' : '[ ACTIVAR SISTEMA ]'}
-        </button>
+          <button
+            type="submit"
+            style={{ ...s.btn, opacity: activando ? 0.6 : 1, cursor: activando ? 'not-allowed' : 'pointer' }}
+            disabled={activando}
+          >
+            {activando ? '[ VERIFICANDO... ]' : '[ ACTIVAR SISTEMA ]'}
+          </button>
+        </form>
 
         <div style={s.divider} />
         <p style={s.footer}>
@@ -235,14 +237,14 @@ function BadgeLicencia({ info }: BadgeLicenciaProps) {
   const color = info.modoOffline
     ? '#f0a500'
     : vencimientoProximo
-    ? '#ff6b6b'
-    : '#4a7a4a';
+      ? '#ff6b6b'
+      : '#4a7a4a';
 
   const texto = info.modoOffline
     ? `⚠ OFFLINE — ${info.diasRestantes}d`
     : vencimientoProximo
-    ? `⚠ VENCE EN ${info.diasRestantes}d`
-    : `✔ ${info.cliente} — ${info.diasRestantes}d`;
+      ? `⚠ VENCE EN ${info.diasRestantes}d`
+      : `✔ ${info.cliente} — ${info.diasRestantes}d`;
 
   return <div style={{ ...s.badge, color }}>{texto}</div>;
 }
@@ -286,153 +288,153 @@ function Keyframes() {
 
 const s: Record<string, CSSProperties> = {
   overlay: {
-    position     : 'fixed',
-    inset        : 0,
-    background   : '#0a0a0a',
-    display      : 'flex',
-    alignItems   : 'center',
+    position: 'fixed',
+    inset: 0,
+    background: '#0a0a0a',
+    display: 'flex',
+    alignItems: 'center',
     justifyContent: 'center',
-    fontFamily   : "'Courier New', monospace",
-    zIndex       : 9999,
-    overflow     : 'hidden',
+    fontFamily: "'Courier New', monospace",
+    zIndex: 9999,
+    overflow: 'hidden',
   },
   scanline: {
-    position      : 'absolute',
-    inset         : 0,
-    background    : 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.015) 2px, rgba(0,255,100,0.015) 4px)',
-    pointerEvents : 'none',
+    position: 'absolute',
+    inset: 0,
+    background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.015) 2px, rgba(0,255,100,0.015) 4px)',
+    pointerEvents: 'none',
   },
   box: {
-    border     : '1px solid #1a3a1a',
-    background : '#0d150d',
-    padding    : '40px 48px',
-    width      : '420px',
-    boxShadow  : '0 0 40px rgba(0,200,80,0.08), inset 0 0 20px rgba(0,0,0,0.5)',
+    border: '1px solid #1a3a1a',
+    background: '#0d150d',
+    padding: '40px 48px',
+    width: '420px',
+    boxShadow: '0 0 40px rgba(0,200,80,0.08), inset 0 0 20px rgba(0,0,0,0.5)',
   },
   logoRow: {
-    display    : 'flex',
-    alignItems : 'baseline',
-    gap        : '12px',
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: '12px',
     marginBottom: '4px',
   },
   logoText: {
-    fontSize    : '22px',
-    fontWeight  : 'bold',
-    color       : '#00e676',
+    fontSize: '22px',
+    fontWeight: 'bold',
+    color: '#00e676',
     letterSpacing: '2px',
-    border      : '1px solid #00e676',
-    padding     : '2px 8px',
+    border: '1px solid #00e676',
+    padding: '2px 8px',
   },
   logoSub: {
-    fontSize    : '11px',
-    color       : '#4a7a4a',
+    fontSize: '11px',
+    color: '#4a7a4a',
     letterSpacing: '4px',
   },
   divider: {
-    borderTop : '1px solid #1a3a1a',
-    margin    : '20px 0',
+    borderTop: '1px solid #1a3a1a',
+    margin: '20px 0',
   },
   titulo: {
-    color        : '#f0a500',
-    fontSize     : '13px',
+    color: '#f0a500',
+    fontSize: '13px',
     letterSpacing: '3px',
-    margin       : '0 0 8px',
+    margin: '0 0 8px',
   },
   subtitulo: {
-    color      : '#5a7a5a',
-    fontSize   : '11px',
-    lineHeight : '1.6',
-    margin     : '0 0 20px',
+    color: '#5a7a5a',
+    fontSize: '11px',
+    lineHeight: '1.6',
+    margin: '0 0 20px',
   },
   alert: {
-    display      : 'flex',
-    gap          : '10px',
-    alignItems   : 'flex-start',
-    background   : 'rgba(255,60,60,0.08)',
-    border       : '1px solid rgba(255,60,60,0.3)',
-    padding      : '10px 14px',
-    marginBottom : '16px',
-    color        : '#ff6b6b',
-    fontSize     : '11px',
-    lineHeight   : '1.5',
+    display: 'flex',
+    gap: '10px',
+    alignItems: 'flex-start',
+    background: 'rgba(255,60,60,0.08)',
+    border: '1px solid rgba(255,60,60,0.3)',
+    padding: '10px 14px',
+    marginBottom: '16px',
+    color: '#ff6b6b',
+    fontSize: '11px',
+    lineHeight: '1.5',
   },
   alertIcon: {
-    color      : '#ff4444',
-    fontWeight : 'bold',
-    fontSize   : '14px',
-    flexShrink : 0,
+    color: '#ff4444',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    flexShrink: 0,
   },
   label: {
-    display      : 'block',
-    color        : '#4a7a4a',
-    fontSize     : '10px',
+    display: 'block',
+    color: '#4a7a4a',
+    fontSize: '10px',
     letterSpacing: '2px',
-    marginBottom : '6px',
+    marginBottom: '6px',
   },
   input: {
-    width        : '100%',
-    background   : '#060f06',
-    border       : '1px solid #1a4a1a',
-    color        : '#00e676',
-    padding      : '10px 14px',
-    fontSize     : '14px',
-    fontFamily   : "'Courier New', monospace",
+    width: '100%',
+    background: '#060f06',
+    border: '1px solid #1a4a1a',
+    color: '#00e676',
+    padding: '10px 14px',
+    fontSize: '14px',
+    fontFamily: "'Courier New', monospace",
     letterSpacing: '2px',
-    outline      : 'none',
-    boxSizing    : 'border-box',
+    outline: 'none',
+    boxSizing: 'border-box',
   },
   errorMsg: {
-    color    : '#ff6b6b',
-    fontSize : '11px',
-    margin   : '6px 0 12px',
+    color: '#ff6b6b',
+    fontSize: '11px',
+    margin: '6px 0 12px',
   },
   btn: {
-    width        : '100%',
-    background   : 'transparent',
-    border       : '1px solid #f0a500',
-    color        : '#f0a500',
-    padding      : '12px',
-    fontSize     : '12px',
-    fontFamily   : "'Courier New', monospace",
+    width: '100%',
+    background: 'transparent',
+    border: '1px solid #f0a500',
+    color: '#f0a500',
+    padding: '12px',
+    fontSize: '12px',
+    fontFamily: "'Courier New', monospace",
     letterSpacing: '3px',
-    marginTop    : '8px',
-    transition   : 'all 0.2s',
+    marginTop: '8px',
+    transition: 'all 0.2s',
   },
   footer: {
-    color      : '#2a4a2a',
-    fontSize   : '10px',
-    lineHeight : '1.8',
-    textAlign  : 'center',
+    color: '#2a4a2a',
+    fontSize: '10px',
+    lineHeight: '1.8',
+    textAlign: 'center',
   },
   badge: {
-    position    : 'fixed',
-    bottom      : '8px',
-    right       : '12px',
-    background  : 'rgba(0,0,0,0.7)',
-    fontSize    : '10px',
-    padding     : '3px 8px',
-    fontFamily  : "'Courier New', monospace",
+    position: 'fixed',
+    bottom: '8px',
+    right: '12px',
+    background: 'rgba(0,0,0,0.7)',
+    fontSize: '10px',
+    padding: '3px 8px',
+    fontFamily: "'Courier New', monospace",
     letterSpacing: '1px',
     pointerEvents: 'none',
-    zIndex      : 1000,
-    transition  : 'color 0.3s',
+    zIndex: 1000,
+    transition: 'color 0.3s',
   },
   dots: {
-    display    : 'flex',
-    gap        : '8px',
-    margin     : '24px 0 8px',
+    display: 'flex',
+    gap: '8px',
+    margin: '24px 0 8px',
   },
   dot: {
-    width           : '8px',
-    height          : '8px',
-    background      : '#00e676',
-    borderRadius    : '50%',
-    animation       : 'blink 1s infinite',
-    display         : 'inline-block',
+    width: '8px',
+    height: '8px',
+    background: '#00e676',
+    borderRadius: '50%',
+    animation: 'blink 1s infinite',
+    display: 'inline-block',
   },
   loadingText: {
-    color        : '#2a5a2a',
-    fontSize     : '11px',
+    color: '#2a5a2a',
+    fontSize: '11px',
     letterSpacing: '3px',
   },
 };

@@ -82,9 +82,6 @@ const INITIAL_REGLAJE: ReglajeState = {
   imp_az: 0, imp_dist: 0, imp_unit: 'mils',
 };
 
-// ============================================================
-// TIPOS INTERNOS
-// ============================================================
 type FaseMision = 'PREPARACION' | 'FUEGO';
 
 interface DatosCongelados {
@@ -100,19 +97,18 @@ interface DatosCongelados {
 // ============================================================
 export function Calculadora() {
   // ── UI State ─────────────────────────────────────────────
-  const [faseMision, setFaseMision] = useState<FaseMision>(
-    () => (localStorage.getItem(STORAGE_KEYS.ESTADO) as FaseMision) || 'PREPARACION',
-  );
+  const [faseMision, setFaseMision] = useState<FaseMision>(() => {
+    const raw = localStorage.getItem(STORAGE_KEYS.ESTADO);
+    if (raw === '"FUEGO"' || raw === 'FUEGO') return 'FUEGO';
+    return 'PREPARACION';
+  });
+
   const [panelInferiorOculto, setPanelInferiorOculto] = useState(false);
   const [panelDerechoOculto, setPanelDerechoOculto] = useState(false);
   const [isFiring, setIsFiring] = useState(false);
   const [mapId, setMapId] = useState(0);
   const [showConfirmNuevaMision, setShowConfirmNuevaMision] = useState(false);
   const [logAEditar, setLogAEditar] = useState<LogTiro | null>(null);
-
-  // ── Datos calculados (fuente de verdad separada de res) ──
-  // CRÍTICO: variacionWMM está separado de `res` para evitar
-  // que el useEffect de cálculo balístico se dispare en loop.
   const [variacionWMM, setVariacionWMM] = useState<number>(0);
 
   // ── Misión State ─────────────────────────────────────────
@@ -146,15 +142,7 @@ export function Calculadora() {
     } catch { return []; }
   });
 
-  // Ref en lugar de state: el contador no necesita provocar re-renders
-  const contadorRef = useRef<number>((() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.LOGS);
-      return raw ? JSON.parse(raw).length + 1 : 1;
-    } catch { return 1; }
-  })());
-
-  const lastGranada = useRef(inputs.tipoGranada);
+  const contadorRef = useRef<number>(historial.length > 0 ? historial[0].id + 1 : 1);
   const firingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Persistencia ──────────────────────────────────────────
@@ -162,20 +150,14 @@ export function Calculadora() {
   useEffect(() => { saveToStorage(STORAGE_KEYS.RES, res); }, [res]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.REGLAJE, reglaje); }, [reglaje]);
   useEffect(() => { saveToStorage(STORAGE_KEYS.LOGS, historial); }, [historial]);
-  useEffect(() => { saveToStorage(STORAGE_KEYS.ESTADO, faseMision); }, [faseMision]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.ESTADO, faseMision); }, [faseMision]);
+
   useEffect(() => {
     if (datosCongelados) saveToStorage(STORAGE_KEYS.BASE, datosCongelados);
     else localStorage.removeItem(STORAGE_KEYS.BASE);
   }, [datosCongelados]);
-  useEffect(() => { saveToStorage(STORAGE_KEYS.CORR, correccionAcumulada); }, [correccionAcumulada]);
 
-  // ── Reset de carga al cambiar munición ────────────────────
-  useEffect(() => {
-    if (inputs.tipoGranada !== lastGranada.current) {
-      setInputs(prev => ({ ...prev, carga_seleccionada: '-' }));
-      lastGranada.current = inputs.tipoGranada;
-    }
-  }, [inputs.tipoGranada]);
+  useEffect(() => { saveToStorage(STORAGE_KEYS.CORR, correccionAcumulada); }, [correccionAcumulada]);
 
   // ── TX/TY desde observador avanzado ──────────────────────
   useEffect(() => {
@@ -186,25 +168,25 @@ export function Calculadora() {
       ? inputs.azObs * (Math.PI * 2 / 6400)
       : inputs.azObs * (Math.PI / 180);
 
-    setInputs(prev => ({
-      ...prev,
-      tx: Math.round(inputs.ox + inputs.distObs * Math.sin(rad)),
-      ty: Math.round(inputs.oy + inputs.distObs * Math.cos(rad)),
-    }));
-  }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, faseMision]);
+    const newTx = Math.round(inputs.ox + inputs.distObs * Math.sin(rad));
+    const newTy = Math.round(inputs.oy + inputs.distObs * Math.cos(rad));
 
-  // ── Variación magnética (WMM) — estado independiente ─────
-  // IMPORTANTE: No actualiza `res` directamente para no
-  // causar un loop en el useEffect de cálculo balístico.
+    if (inputs.tx !== newTx || inputs.ty !== newTy) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInputs(prev => ({ ...prev, tx: newTx, ty: newTy }));
+    }
+  }, [inputs.distObs, inputs.azObs, inputs.azObsUnit, inputs.ox, inputs.oy, inputs.tx, inputs.ty, faseMision]);
+
+  // ── Variación magnética (WMM) ────────────────────────────
   useEffect(() => {
     if (faseMision === 'PREPARACION') {
       const mils = calcularVariacionWMM(inputs.mx, inputs.my, inputs.zona);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVariacionWMM(mils);
     }
   }, [inputs.mx, inputs.my, inputs.zona, faseMision]);
 
   // ── Cálculo balístico principal ───────────────────────────
-  // Dependencias limpias: no incluye `res` para evitar loops.
   useEffect(() => {
     if (inputs.mx === 0 || inputs.tx === 0) return;
     const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
@@ -281,6 +263,7 @@ export function Calculadora() {
 
     const derivaFinal = (derivaCalculo + (solucion.corrDeriva || 0) + 6400) % 6400;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRes(prev => ({
       ...prev,
       azimutMils: geo.azMils,
@@ -297,10 +280,9 @@ export function Calculadora() {
       rango_min: rMin,
       rango_max: rMax,
     }));
-    // variacionWMM reemplaza res.variacion como dependencia → sin loop
   }, [inputs, faseMision, datosCongelados, correccionAcumulada, variacionWMM]);
 
-  // ── Cleanup de timers al desmontar ───────────────────────
+  // ── Cleanup de timers ────────────────────────────────────
   useEffect(() => {
     return () => {
       if (firingTimerRef.current) clearTimeout(firingTimerRef.current);
@@ -324,13 +306,14 @@ export function Calculadora() {
     if (type === 'checkbox') val = (e.target as { checked?: boolean }).checked ?? false;
     if (id === 'zona') val = parseInt(value as string);
 
-    if (id === 'check_bloqueo') {
-      setInputs(prev => ({ ...prev, bloqueoMeteo: val as boolean }));
-    } else if (id === 'check_variacion') {
-      setInputs(prev => ({ ...prev, usarVariacion: val as boolean }));
-    } else {
-      setInputs(prev => ({ ...prev, [id]: val }));
-    }
+    // MEJORA: Evitamos el useEffect del tipoGranada manejándolo aquí mismo
+    setInputs(prev => {
+      const nextState = { ...prev, [id]: val };
+      if (id === 'check_bloqueo') nextState.bloqueoMeteo = val as boolean;
+      if (id === 'check_variacion') nextState.usarVariacion = val as boolean;
+      if (id === 'tipoGranada') nextState.carga_seleccionada = '-';
+      return nextState;
+    });
   }, []);
 
   const handleReglaje = useCallback((e: FdcChangeEvent) => {
@@ -340,15 +323,6 @@ export function Calculadora() {
       : (value as string);
     setReglaje(prev => ({ ...prev, [id]: val }));
   }, []);
-
-  const handleNuevaMision = useCallback(() => {
-    if (historial.length > 0) {
-      setShowConfirmNuevaMision(true);
-    } else {
-      ejecutarResetMision();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historial.length]);
 
   const ejecutarResetMision = useCallback(() => {
     setShowConfirmNuevaMision(false);
@@ -364,6 +338,14 @@ export function Calculadora() {
     setVariacionWMM(0);
     setMapId(id => id + 1);
   }, []);
+
+  const handleNuevaMision = useCallback(() => {
+    if (historial.length > 0) {
+      setShowConfirmNuevaMision(true);
+    } else {
+      ejecutarResetMision();
+    }
+  }, [historial.length, ejecutarResetMision]);
 
   const guardarLog = useCallback((
     tipo: 'SALVA' | 'REGLAJE',
@@ -385,7 +367,6 @@ export function Calculadora() {
     };
     contadorRef.current += 1;
     setHistorial(prev => [nuevoLog, ...prev]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputs, res]);
 
   const handleEjecutarTiro = useCallback(() => {
@@ -400,37 +381,42 @@ export function Calculadora() {
       return;
     }
 
-    if (faseMision === 'PREPARACION') {
-      const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
-      if (geo) {
-        const varMils = inputs.usarVariacion ? variacionWMM : 0;
-        const azMag = geo.azMils - varMils;
-        setDatosCongelados({
-          derivaBase: (inputs.orientacion_base - azMag + 6400) % 6400,
-          distBase: geo.dist,
-          variacionUsada: varMils,
-          azimutBaseMag: azMag,
-          azimutBaseGrid: geo.azMils,
-        });
-        setFaseMision('FUEGO');
+    try {
+      if (faseMision === 'PREPARACION') {
+        const geo = calcularGeometria(inputs.mx, inputs.my, inputs.tx, inputs.ty);
+        if (geo) {
+          const varMils = inputs.usarVariacion ? variacionWMM : 0;
+          const azMag = geo.azMils - varMils;
+          setDatosCongelados({
+            derivaBase: (inputs.orientacion_base - azMag + 6400) % 6400,
+            distBase: geo.dist,
+            variacionUsada: varMils,
+            azimutBaseMag: azMag,
+            azimutBaseGrid: geo.azMils,
+          });
+          setFaseMision('FUEGO');
+        }
       }
+
+      const cargaActiva = inputs.carga_seleccionada === '-'
+        ? res.carga_rec
+        : inputs.carga_seleccionada;
+
+      setIsFiring(true);
+      guardarLog(
+        'SALVA',
+        `Carga ${cargaActiva} | Elev ${res.cmd_elev} | Deriva ${res.cmd_deriva}`,
+        `Dist: ${res.cmd_dist}`,
+      );
+
+      firingTimerRef.current = setTimeout(() => setIsFiring(false), 1500);
+    } catch (error) {
+      console.error(error);
+      setIsFiring(false);
     }
-
-    const cargaActiva = inputs.carga_seleccionada === '-'
-      ? res.carga_rec
-      : inputs.carga_seleccionada;
-
-    setIsFiring(true);
-    guardarLog(
-      'SALVA',
-      `Carga ${cargaActiva} | Elev ${res.cmd_elev} | Deriva ${res.cmd_deriva}`,
-      `Dist: ${res.cmd_dist}`,
-    );
-
-    firingTimerRef.current = setTimeout(() => setIsFiring(false), 1500);
   }, [isFiring, inputs, res, faseMision, variacionWMM, guardarLog]);
 
-  // ── Recálculo de historial (base compartida para editar/eliminar) ──
+  // ── Recálculo de historial ────────────────────────────────
   const recalcularHistorial = useCallback((
     historialBase: LogTiro[],
     logIdAEditar?: number,
@@ -550,7 +536,6 @@ export function Calculadora() {
     return { historial: recalculado.reverse(), az: nuevoAccAz, dist: nuevoAccDist };
   }, [datosCongelados]);
 
-  // Eliminar log — sin window.confirm (el modal está en MissionLog)
   const eliminarLog = useCallback((idABorrar: number) => {
     const filtrado = historial.filter(l => l.id !== idABorrar);
     const { historial: recalculado, az, dist } = recalcularHistorial(filtrado);
@@ -623,9 +608,6 @@ export function Calculadora() {
     const nuevoDist = correccionAcumulada.dist + deltaDist;
     setCorreccionAcumulada({ az: nuevoAz, dist: nuevoDist });
 
-    // ── Recalcular solución balística para el snapshot del reglaje ──
-    // CRÍTICO: no copiar res.cmd_elev/cmd_time — son del tiro anterior.
-    // Se recalcula igual que hace recalcularHistorial para consistencia.
     const distCorregida = datosCongelados ? datosCongelados.distBase + nuevoDist : 0;
     const derivaCorregida = datosCongelados
       ? Math.round((datosCongelados.derivaBase - nuevoAz + 6400) % 6400)
@@ -840,7 +822,7 @@ export function Calculadora() {
 }
 
 // ============================================================
-// MODAL: CONFIRMAR FIN DE MISIÓN (extraído para legibilidad)
+// MODAL: CONFIRMAR FIN DE MISIÓN
 // ============================================================
 interface ConfirmNuevaMisionModalProps {
   totalRegistros: number;
