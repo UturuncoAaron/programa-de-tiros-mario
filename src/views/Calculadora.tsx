@@ -92,6 +92,19 @@ interface DatosCongelados {
   azimutBaseGrid: number;
 }
 
+// ── NUEVO: tipo para el estado del modal de error ────────────
+interface ErrorModalState {
+  visible: boolean;
+  titulo: string;
+  mensaje: string;
+}
+
+const INITIAL_ERROR_MODAL: ErrorModalState = {
+  visible: false,
+  titulo: '',
+  mensaje: '',
+};
+
 // ============================================================
 // COMPONENTE PRINCIPAL
 // ============================================================
@@ -110,6 +123,19 @@ export function Calculadora() {
   const [showConfirmNuevaMision, setShowConfirmNuevaMision] = useState(false);
   const [logAEditar, setLogAEditar] = useState<LogTiro | null>(null);
   const [variacionWMM, setVariacionWMM] = useState<number>(0);
+
+  // ── NUEVO: estado del modal de error ─────────────────────
+  const [errorModal, setErrorModal] = useState<ErrorModalState>(INITIAL_ERROR_MODAL);
+
+  /** Muestra el modal de error táctico (reemplaza alert) */
+  const mostrarError = useCallback((titulo: string, mensaje: string) => {
+    setErrorModal({ visible: true, titulo, mensaje });
+  }, []);
+
+  /** Cierra el modal de error */
+  const cerrarError = useCallback(() => {
+    setErrorModal(INITIAL_ERROR_MODAL);
+  }, []);
 
   // ── Misión State ─────────────────────────────────────────
   const [datosCongelados, setDatosCongelados] = useState<DatosCongelados | null>(() => {
@@ -306,7 +332,6 @@ export function Calculadora() {
     if (type === 'checkbox') val = (e.target as { checked?: boolean }).checked ?? false;
     if (id === 'zona') val = parseInt(value as string);
 
-    // MEJORA: Evitamos el useEffect del tipoGranada manejándolo aquí mismo
     setInputs(prev => {
       const nextState = { ...prev, [id]: val };
       if (id === 'check_bloqueo') nextState.bloqueoMeteo = val as boolean;
@@ -369,15 +394,23 @@ export function Calculadora() {
     setHistorial(prev => [nuevoLog, ...prev]);
   }, [inputs, res]);
 
+  // ── MODIFICADO: handleEjecutarTiro usa mostrarError en vez de alert ──
   const handleEjecutarTiro = useCallback(() => {
     if (isFiring) return;
 
     if (!inputs.mx || !inputs.my || !inputs.tx || !inputs.ty) {
-      alert('⚠️ ERROR: Faltan coordenadas.\nDebe ingresar la posición del Mortero y del Blanco.');
+      mostrarError(
+        'FALTAN COORDENADAS',
+        '▸ Posición del Mortero: no ingresada\n▸ Posición del Blanco: no ingresada\n\nDebe ingresar ambas coordenadas antes de ejecutar el tiro.',
+      );
       return;
     }
+
     if (res.cmd_elev === '-' || res.cmd_deriva === '-') {
-      alert('⚠️ ERROR: Sin solución balística.\nEl objetivo está fuera de alcance o no hay carga seleccionada.');
+      mostrarError(
+        'SIN SOLUCIÓN BALÍSTICA',
+        '▸ El objetivo está fuera del alcance de la carga seleccionada.\n▸ Verifique la munición y la distancia al blanco.',
+      );
       return;
     }
 
@@ -414,7 +447,7 @@ export function Calculadora() {
       console.error(error);
       setIsFiring(false);
     }
-  }, [isFiring, inputs, res, faseMision, variacionWMM, guardarLog]);
+  }, [isFiring, inputs, res, faseMision, variacionWMM, guardarLog, mostrarError]);
 
   // ── Recálculo de historial ────────────────────────────────
   const recalcularHistorial = useCallback((
@@ -817,6 +850,15 @@ export function Calculadora() {
           onCancel={() => setShowConfirmNuevaMision(false)}
         />
       )}
+
+      {/* ── MODAL: ERROR TÁCTICO (reemplaza alert nativo) ───── */}
+      {errorModal.visible && (
+        <ErrorModal
+          titulo={errorModal.titulo}
+          mensaje={errorModal.mensaje}
+          onClose={cerrarError}
+        />
+      )}
     </div>
   );
 }
@@ -907,6 +949,92 @@ function ConfirmNuevaMisionModal({ totalRegistros, onConfirm, onCancel }: Confir
           MORTEROS-MARIA // SEC-CLEARANCE-1
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MODAL: ERROR TÁCTICO (reemplaza alert nativo)
+// ============================================================
+interface ErrorModalProps {
+  titulo: string;
+  mensaje: string;
+  onClose: () => void;
+}
+
+function ErrorModal({ titulo, mensaje, onClose }: ErrorModalProps) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'monospace',
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#060d0f',
+          border: '2px solid #ff4444',
+          boxShadow: '0 0 30px rgba(255,68,68,0.35), inset 0 0 20px rgba(255,0,0,0.04)',
+          padding: '28px 36px',
+          maxWidth: '400px', width: '90%',
+          textAlign: 'center',
+          animation: 'fdcFadeIn 0.15s ease-out',
+        }}
+      >
+        <div style={{ borderBottom: '1px solid #ff4444', paddingBottom: '10px', marginBottom: '18px' }}>
+          <div style={{ color: '#ff4444', fontSize: '0.6rem', letterSpacing: '3px', marginBottom: '4px' }}>
+            ⚠ ERROR DE SISTEMA ⚠
+          </div>
+          <div style={{ color: '#ff4444', fontSize: '1rem', fontWeight: 'bold', letterSpacing: '2px' }}>
+            {titulo}
+          </div>
+        </div>
+
+        <div style={{
+          background: 'rgba(255,68,68,0.06)', border: '1px solid #661111',
+          padding: '12px 16px', marginBottom: '22px',
+          textAlign: 'left', fontSize: '0.72rem', color: '#ff9999',
+          lineHeight: '1.75', whiteSpace: 'pre-line',
+        }}>
+          {mensaje}
+        </div>
+
+        <button
+          onClick={onClose}
+          autoFocus
+          style={{
+            padding: '9px 32px', fontFamily: 'monospace', fontWeight: 'bold',
+            fontSize: '0.75rem', cursor: 'pointer', letterSpacing: '1px',
+            background: '#1a0000', color: '#ff4444', border: '2px solid #ff4444',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,68,68,0.18)')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#1a0000')}
+        >
+          [ ACEPTAR ]
+        </button>
+
+        <div style={{ marginTop: '14px', color: '#333', fontSize: '0.55rem', letterSpacing: '2px' }}>
+          MORTEROS-MARIA // SEC-CLEARANCE-1
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes fdcFadeIn {
+          from { opacity: 0; transform: scale(0.96); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
