@@ -92,7 +92,6 @@ interface DatosCongelados {
   azimutBaseGrid: number;
 }
 
-// ── NUEVO: tipo para el estado del modal de error ────────────
 interface ErrorModalState {
   visible: boolean;
   titulo: string;
@@ -123,16 +122,12 @@ export function Calculadora() {
   const [showConfirmNuevaMision, setShowConfirmNuevaMision] = useState(false);
   const [logAEditar, setLogAEditar] = useState<LogTiro | null>(null);
   const [variacionWMM, setVariacionWMM] = useState<number>(0);
-
-  // ── NUEVO: estado del modal de error ─────────────────────
   const [errorModal, setErrorModal] = useState<ErrorModalState>(INITIAL_ERROR_MODAL);
 
-  /** Muestra el modal de error táctico (reemplaza alert) */
   const mostrarError = useCallback((titulo: string, mensaje: string) => {
     setErrorModal({ visible: true, titulo, mensaje });
   }, []);
 
-  /** Cierra el modal de error */
   const cerrarError = useCallback(() => {
     setErrorModal(INITIAL_ERROR_MODAL);
   }, []);
@@ -394,7 +389,6 @@ export function Calculadora() {
     setHistorial(prev => [nuevoLog, ...prev]);
   }, [inputs, res]);
 
-  // ── MODIFICADO: handleEjecutarTiro usa mostrarError en vez de alert ──
   const handleEjecutarTiro = useCallback(() => {
     if (isFiring) return;
 
@@ -587,7 +581,19 @@ export function Calculadora() {
     setLogAEditar(null);
   }, [datosCongelados, historial, recalcularHistorial]);
 
+  // ── CORRECCIÓN: bloqueada hasta que exista al menos una SALVA ──
   const aplicarCorreccion = useCallback(() => {
+    // ── GUARDIA: debe haber al menos un tiro ejecutado ────────
+    const hayTiro = historial.some(l => l.tipo === 'SALVA');
+    if (!hayTiro) {
+      mostrarError(
+        'REGLAJE NO DISPONIBLE',
+        '▸ Debe ejecutar al menos un tiro antes de aplicar una corrección.\n▸ Use el botón [EJECUTAR TIRO] para iniciar la misión de fuego.',
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────
+
     let deltaAz = 0;
     let deltaDist = 0;
     let detalleLog = '';
@@ -702,11 +708,15 @@ export function Calculadora() {
     );
 
     setReglaje(prev => ({ ...prev, val_dir: 0, val_rango: 0, imp_az: 0, imp_dist: 0 }));
-  }, [reglaje, inputs, datosCongelados, correccionAcumulada, res, guardarLog]);
+  }, [reglaje, inputs, datosCongelados, correccionAcumulada, res, guardarLog, historial, mostrarError]);
 
   // ============================================================
   // RENDER
   // ============================================================
+
+  // Derivado: hay al menos una SALVA en el historial
+  const hayTiroEjecutado = historial.some(l => l.tipo === 'SALVA');
+
   return (
     <div className="laptop-bezel" style={{ width: '100%', height: '100%', border: 'none' }}>
       <div className="screen-container">
@@ -827,6 +837,7 @@ export function Calculadora() {
                 reglaje={reglaje}
                 onChange={handleReglaje}
                 onApply={aplicarCorreccion}
+                bloqueado={!hayTiroEjecutado}
               />
             </div>
           </RightPanel>
@@ -851,7 +862,7 @@ export function Calculadora() {
         />
       )}
 
-      {/* ── MODAL: ERROR TÁCTICO (reemplaza alert nativo) ───── */}
+      {/* ── MODAL: ERROR TÁCTICO ─────────────────────────────── */}
       {errorModal.visible && (
         <ErrorModal
           titulo={errorModal.titulo}
@@ -954,7 +965,7 @@ function ConfirmNuevaMisionModal({ totalRegistros, onConfirm, onCancel }: Confir
 }
 
 // ============================================================
-// MODAL: ERROR TÁCTICO (reemplaza alert nativo)
+// MODAL: ERROR TÁCTICO
 // ============================================================
 interface ErrorModalProps {
   titulo: string;
