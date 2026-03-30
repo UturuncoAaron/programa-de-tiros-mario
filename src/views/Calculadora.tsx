@@ -420,6 +420,7 @@ export function Calculadora() {
             variacionUsada: varMils,
             azimutBaseMag: azMag,
             azimutBaseGrid: geo.azMils,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           });
           setFaseMision('FUEGO');
         }
@@ -583,7 +584,6 @@ export function Calculadora() {
 
   // ── CORRECCIÓN: bloqueada hasta que exista al menos una SALVA ──
   const aplicarCorreccion = useCallback(() => {
-    // ── GUARDIA: debe haber al menos un tiro ejecutado ────────
     const hayTiro = historial.some(l => l.tipo === 'SALVA');
     if (!hayTiro) {
       mostrarError(
@@ -592,7 +592,6 @@ export function Calculadora() {
       );
       return;
     }
-    // ─────────────────────────────────────────────────────────
 
     let deltaAz = 0;
     let deltaDist = 0;
@@ -714,7 +713,6 @@ export function Calculadora() {
   // RENDER
   // ============================================================
 
-  // Derivado: hay al menos una SALVA en el historial
   const hayTiroEjecutado = historial.some(l => l.tipo === 'SALVA');
 
   return (
@@ -736,7 +734,8 @@ export function Calculadora() {
               onClick={toggleModoMapa}
               style={{
                 backgroundColor: '#060d0f', color: '#00e5ff',
-                border: '1px solid #00e5ff', padding: '4px 10px',
+                borderWidth: '1px', borderStyle: 'solid', borderColor: '#00e5ff',
+                padding: '4px 10px',
                 fontSize: '0.7rem', marginRight: '15px',
                 cursor: 'pointer', fontFamily: 'monospace', transition: 'all 0.2s',
               }}
@@ -751,7 +750,8 @@ export function Calculadora() {
               className="btn-reset-mision"
               style={{
                 backgroundColor: '#330000', color: '#ff4444',
-                border: '1px solid #ff4444', padding: '4px 10px',
+                borderWidth: '1px', borderStyle: 'solid', borderColor: '#ff4444',
+                padding: '4px 10px',
                 fontSize: '0.7rem', marginRight: '15px',
                 cursor: 'pointer', fontFamily: 'monospace',
               }}
@@ -893,13 +893,13 @@ function ConfirmNuevaMisionModal({ totalRegistros, onConfirm, onCancel }: Confir
     }}>
       <div style={{
         background: '#060d0f',
-        border: '2px solid #ff4444',
+        borderWidth: '2px', borderStyle: 'solid', borderColor: '#ff4444',
         boxShadow: '0 0 30px rgba(255,68,68,0.4), inset 0 0 20px rgba(255,0,0,0.05)',
         padding: '32px 40px',
         maxWidth: '420px', width: '90%',
         textAlign: 'center',
       }}>
-        <div style={{ borderBottom: '1px solid #ff4444', paddingBottom: '12px', marginBottom: '20px' }}>
+        <div style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#ff4444', paddingBottom: '12px', marginBottom: '20px' }}>
           <div style={{ color: '#ff4444', fontSize: '0.65rem', letterSpacing: '3px', marginBottom: '6px' }}>
             ⚠ ALERTA DE SISTEMA ⚠
           </div>
@@ -913,7 +913,7 @@ function ConfirmNuevaMisionModal({ totalRegistros, onConfirm, onCancel }: Confir
         </div>
 
         <div style={{
-          background: 'rgba(255,68,68,0.08)', border: '1px solid #661111',
+          background: 'rgba(255,68,68,0.08)', borderWidth: '1px', borderStyle: 'solid', borderColor: '#661111',
           padding: '10px 14px', marginBottom: '24px', textAlign: 'left',
           fontSize: '0.7rem', color: '#ff8888', lineHeight: '1.8',
         }}>
@@ -933,7 +933,8 @@ function ConfirmNuevaMisionModal({ totalRegistros, onConfirm, onCancel }: Confir
             style={{
               flex: 1, padding: '10px', fontFamily: 'monospace', fontWeight: 'bold',
               fontSize: '0.75rem', cursor: 'pointer', letterSpacing: '1px',
-              background: '#060d0f', color: '#00e5ff', border: '1px solid #00e5ff',
+              background: '#060d0f', color: '#00e5ff',
+              borderWidth: '1px', borderStyle: 'solid', borderColor: '#00e5ff',
               transition: 'all 0.2s',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.1)')}
@@ -946,7 +947,8 @@ function ConfirmNuevaMisionModal({ totalRegistros, onConfirm, onCancel }: Confir
             style={{
               flex: 1, padding: '10px', fontFamily: 'monospace', fontWeight: 'bold',
               fontSize: '0.75rem', cursor: 'pointer', letterSpacing: '1px',
-              background: '#1a0000', color: '#ff4444', border: '2px solid #ff4444',
+              background: '#1a0000', color: '#ff4444',
+              borderWidth: '2px', borderStyle: 'solid', borderColor: '#ff4444',
               transition: 'all 0.2s',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,68,68,0.2)')}
@@ -994,15 +996,14 @@ function ErrorModal({ titulo, mensaje, onClose }: ErrorModalProps) {
         onClick={e => e.stopPropagation()}
         style={{
           background: '#060d0f',
-          border: '2px solid #ff4444',
+          borderWidth: '2px', borderStyle: 'solid', borderColor: '#ff4444',
           boxShadow: '0 0 30px rgba(255,68,68,0.35), inset 0 0 20px rgba(255,0,0,0.04)',
           padding: '28px 36px',
           maxWidth: '400px', width: '90%',
           textAlign: 'center',
-          animation: 'fdcFadeIn 0.15s ease-out',
         }}
       >
-        <div style={{ borderBottom: '1px solid #ff4444', paddingBottom: '10px', marginBottom: '18px' }}>
+        <div style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#ff4444', paddingBottom: '10px', marginBottom: '18px' }}>
           <div style={{ color: '#ff4444', fontSize: '0.6rem', letterSpacing: '3px', marginBottom: '4px' }}>
             ⚠ ERROR DE SISTEMA ⚠
           </div>
@@ -1012,7 +1013,7 @@ function ErrorModal({ titulo, mensaje, onClose }: ErrorModalProps) {
         </div>
 
         <div style={{
-          background: 'rgba(255,68,68,0.06)', border: '1px solid #661111',
+          background: 'rgba(255,68,68,0.06)', borderWidth: '1px', borderStyle: 'solid', borderColor: '#661111',
           padding: '12px 16px', marginBottom: '22px',
           textAlign: 'left', fontSize: '0.72rem', color: '#ff9999',
           lineHeight: '1.75', whiteSpace: 'pre-line',
@@ -1026,7 +1027,8 @@ function ErrorModal({ titulo, mensaje, onClose }: ErrorModalProps) {
           style={{
             padding: '9px 32px', fontFamily: 'monospace', fontWeight: 'bold',
             fontSize: '0.75rem', cursor: 'pointer', letterSpacing: '1px',
-            background: '#1a0000', color: '#ff4444', border: '2px solid #ff4444',
+            background: '#1a0000', color: '#ff4444',
+            borderWidth: '2px', borderStyle: 'solid', borderColor: '#ff4444',
             transition: 'all 0.2s',
           }}
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,68,68,0.18)')}
@@ -1039,13 +1041,6 @@ function ErrorModal({ titulo, mensaje, onClose }: ErrorModalProps) {
           MORTEROS-MARIA // SEC-CLEARANCE-1
         </div>
       </div>
-
-      <style>{`
-        @keyframes fdcFadeIn {
-          from { opacity: 0; transform: scale(0.96); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
     </div>
   );
 }

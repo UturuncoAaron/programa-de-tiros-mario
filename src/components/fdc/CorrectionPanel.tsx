@@ -22,7 +22,7 @@ export function CorrectionPanel({ reglaje, onChange, onApply, bloqueado = false 
 
     return (
         <div className="sidebar-section" style={{ borderTop: '2px solid #330000' }}>
-            <label className="section-label" style={{ color: '#ff4444', borderColor: '#330000' }}>
+            <label className="section-label" style={{ color: '#ff4444', borderBottomColor: '#330000' }}>
                 REGLAJE DE TIRO
             </label>
 

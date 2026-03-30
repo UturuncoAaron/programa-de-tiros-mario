@@ -32,16 +32,11 @@ interface LayerRefs {
 }
 
 // ============================================================
-// CONSTANTES — fuera del componente para no recrearse
+// CONSTANTES
 // ============================================================
-const ES_SUR = true;   // Perú siempre hemisferio sur
-const ORIENT_LENGTH = 5000;   // Metros de la línea de orientación base
+const ES_SUR = true;
+const ORIENT_LENGTH = 5000;
 
-// ============================================================
-// HELPERS
-// ============================================================
-
-/** Devuelve true si ambas coordenadas UTM son válidas (no-cero, no-NaN). */
 function hasValidCoords(x: number, y: number): boolean {
   return x !== 0 && y !== 0 && !isNaN(x) && !isNaN(y);
 }
@@ -56,20 +51,17 @@ export function MainElements({
   const markersRef = useRef<MarkerRefs>({});
   const layersRef = useRef<LayerRefs>({});
 
+  // ── EFECTO 1: Marcadores + línea M→T + anillos de rango ─────────────
   useEffect(() => {
     if (!map) return;
 
-    // Inicializar LayerGroup de anillos si no existe
     if (!layersRef.current.rangeRings) {
       layersRef.current.rangeRings = L.layerGroup().addTo(map);
     }
 
-    // ✅ Capturar refs en variables locales para el cleanup.
-    // layersRef.current puede mutar entre render y cleanup.
     const layers = layersRef.current;
     const markers = markersRef.current;
 
-    // Guard: necesitamos posición válida del mortero y del objetivo
     if (!hasValidCoords(mx, my) || !hasValidCoords(tx, ty)) return;
 
     try {
@@ -77,53 +69,87 @@ export function MainElements({
       const tPos = utmToLatLng(tx, ty, zona, ES_SUR);
       if (isNaN(mPos[0]) || isNaN(tPos[0])) return;
 
-      const iconMortero = getDivIcon(ICONS.MORTERO, [24, 24]);
-      const iconObjetivo = getDivIcon(ICONS.OBJETIVO, [24, 24]);
-      const iconObservador = getDivIcon(ICONS.OBSERVADOR, [24, 24]);
+      const iconM = getDivIcon(ICONS.MORTERO, [24, 24]);
+      const iconT = getDivIcon(ICONS.OBJETIVO, [24, 24]);
+      const iconO = getDivIcon(ICONS.OBSERVADOR, [24, 24]);
 
-      // ── Mortero ──────────────────────────────────────────
+      // Mortero
       if (!markers.m) {
-        markers.m = L.marker(mPos, { icon: iconMortero, zIndexOffset: 1000 }).addTo(map);
+        markers.m = L.marker(mPos, { icon: iconM, zIndexOffset: 1000 }).addTo(map);
       } else {
-        markers.m.setLatLng(mPos).setIcon(iconMortero);
+        markers.m.setLatLng(mPos).setIcon(iconM);
       }
 
-      // ── Objetivo ─────────────────────────────────────────
+      // Objetivo
       if (!markers.t) {
-        markers.t = L.marker(tPos, { icon: iconObjetivo, zIndexOffset: 900 }).addTo(map);
+        markers.t = L.marker(tPos, { icon: iconT, zIndexOffset: 900 }).addTo(map);
       } else {
-        markers.t.setLatLng(tPos).setIcon(iconObjetivo);
+        markers.t.setLatLng(tPos).setIcon(iconT);
       }
 
-      // ── Observador (opcional) ─────────────────────────────
+      // Observador (opcional)
       if (hasValidCoords(ox, oy)) {
         const oPos = utmToLatLng(ox, oy, zona, ES_SUR);
         if (!isNaN(oPos[0])) {
           if (!markers.o) {
-            markers.o = L.marker(oPos, { icon: iconObservador }).addTo(map);
+            markers.o = L.marker(oPos, { icon: iconO }).addTo(map);
           } else {
-            markers.o.setLatLng(oPos).setIcon(iconObservador);
+            markers.o.setLatLng(oPos).setIcon(iconO);
           }
         }
       } else if (markers.o) {
-        // Limpiar el marcador del observador si ya no tiene coords válidas
         markers.o.remove();
         delete markers.o;
       }
 
-      // ── Línea Mortero → Objetivo ──────────────────────────
+      // Línea Mortero → Objetivo
       if (!markers.line) {
         markers.line = L.polyline([mPos, tPos], {
-          color: '#00ffcc',
-          dashArray: '8, 8',
-          weight: 1,
-          opacity: 0.8,
+          color: '#00ffcc', dashArray: '8,8', weight: 1, opacity: 0.8,
         }).addTo(map);
       } else {
         markers.line.setLatLngs([mPos, tPos]);
       }
 
-      // ── Línea de Orientación Base ─────────────────────────
+      // Anillos de rango
+      layers.rangeRings!.clearLayers();
+      if (rangoCarga && rangoCarga.max > 0) {
+        L.circle(mPos, {
+          radius: rangoCarga.max, color: '#4dff88', weight: 1,
+          fill: false, dashArray: '5,10', opacity: 0.5,
+        }).addTo(layers.rangeRings!);
+        L.circle(mPos, {
+          radius: rangoCarga.min, color: '#ff4444', weight: 1,
+          fill: false, dashArray: '5,10', opacity: 0.5,
+        }).addTo(layers.rangeRings!);
+      }
+    } catch (e) {
+      console.error('[MainElements] Error:', e);
+    }
+
+    return () => {
+      layers.rangeRings?.clearLayers();
+    };
+  }, [map, mx, my, tx, ty, ox, oy, zona, rangoCarga]);
+
+  // ── EFECTO 2: Línea de orientación base (separado para no arrastrar ──
+  //             el redibujado de marcadores cuando solo cambia el azimut)
+  useEffect(() => {
+    if (!map || !hasValidCoords(mx, my)) {
+      if (layersRef.current.orientationLine) {
+        layersRef.current.orientationLine.remove();
+        delete layersRef.current.orientationLine;
+      }
+      return;
+    }
+
+    const layers = layersRef.current;
+
+    try {
+      const mPos = utmToLatLng(mx, my, zona, ES_SUR);
+      if (isNaN(mPos[0])) return;
+
+      // Calcular punto destino de la línea de orientación
       const angleDeg = (orientacion_base * 360) / 6400;
       const rad = angleDeg * (Math.PI / 180);
       const destPos = utmToLatLng(
@@ -134,67 +160,46 @@ export function MainElements({
       );
 
       if (!layers.orientationLine) {
+        // Primera vez: crear línea + tooltip
         layers.orientationLine = L.polyline([mPos, destPos], {
-          color: '#ffcc00',
-          weight: 1,
-          dashArray: '2, 4',
-          opacity: 0.6,
+          color: '#ffcc00', weight: 1, dashArray: '2,4', opacity: 0.6,
         }).addTo(map);
+
         layers.orientationLine.bindTooltip(
           `AZ BASE: ${orientacion_base}`,
           { permanent: true, direction: 'auto', className: 'az-tooltip' },
         );
+
       } else {
+        // Actualizar posición
         layers.orientationLine.setLatLngs([mPos, destPos]);
-        layers.orientationLine.setTooltipContent(`AZ BASE: ${orientacion_base}`);
+
+        // ✅ FIX ETIQUETA: unbind + rebind fuerza al tooltip
+        // a recalcular su posición de anclaje sobre la nueva geometría.
+        // setTooltipContent() sí actualiza el texto pero NO mueve el anchor.
+        layers.orientationLine.unbindTooltip();
+        layers.orientationLine.bindTooltip(
+          `AZ BASE: ${orientacion_base}`,
+          { permanent: true, direction: 'auto', className: 'az-tooltip' },
+        );
       }
-
-      // ── Anillos de rango Min/Max ──────────────────────────
-      layers.rangeRings?.clearLayers();
-      if (rangoCarga && rangoCarga.max > 0) {
-        L.circle(mPos, {
-          radius: rangoCarga.max,
-          color: '#4dff88',
-          weight: 1,
-          fill: false,
-          dashArray: '5, 10',
-          opacity: 0.5,
-        }).addTo(layers.rangeRings!);
-
-        L.circle(mPos, {
-          radius: rangoCarga.min,
-          color: '#ff4444',
-          weight: 1,
-          fill: false,
-          dashArray: '5, 10',
-          opacity: 0.5,
-        }).addTo(layers.rangeRings!);
-      }
-
     } catch (e) {
-      console.error('[MainElements] Error dibujando elementos:', e);
+      console.error('[MainElements] Error línea orientación:', e);
     }
+  }, [map, mx, my, zona, orientacion_base]);
 
-    return () => {
-      layers.rangeRings?.clearLayers();
-    };
-  }, [map, mx, my, tx, ty, ox, oy, zona, orientacion_base, rangoCarga]);
-
-  // Cleanup completo al desmontar
+  // ── Cleanup completo al desmontar ────────────────────────────────────
   useEffect(() => {
     return () => {
-      const markers = markersRef.current;
-      const layers = layersRef.current;
-
-      markers.m?.remove();
-      markers.t?.remove();
-      markers.o?.remove();
-      markers.line?.remove();
-      layers.orientationLine?.remove();
-      layers.rangeRings?.clearLayers();
-      layers.rangeRings?.remove();
-
-      // Vaciar refs para evitar memory leaks si el componente se remonta
+      const m = markersRef.current;
+      const l = layersRef.current;
+      m.m?.remove();
+      m.t?.remove();
+      m.o?.remove();
+      m.line?.remove();
+      l.orientationLine?.remove();
+      l.rangeRings?.clearLayers();
+      l.rangeRings?.remove();
       markersRef.current = {};
       layersRef.current = {};
     };
